@@ -43,3 +43,5 @@ data/
 protos/
 utils/
 *.pth
+
+.idea
