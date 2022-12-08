@@ -12,14 +12,13 @@ import numpy
 from scipy import signal
 
 # ==================== PARSE ARGUMENT ====================
-
 parser = argparse.ArgumentParser(description="SyncNet")
 parser.add_argument("--data_dir", type=str, default="data/work", help="")
 parser.add_argument("--videofile", type=str, default="", help="")
 parser.add_argument("--reference", type=str, default="", help="")
 parser.add_argument("--frame_rate", type=int, default=25, help="Frame rate")
-opt = parser.parse_args()
 
+opt = parser.parse_args()
 setattr(opt, "avi_dir", os.path.join(opt.data_dir, "pyavi"))
 setattr(opt, "tmp_dir", os.path.join(opt.data_dir, "pytmp"))
 setattr(opt, "work_dir", os.path.join(opt.data_dir, "pywork"))
@@ -27,7 +26,6 @@ setattr(opt, "crop_dir", os.path.join(opt.data_dir, "pycrop"))
 setattr(opt, "frames_dir", os.path.join(opt.data_dir, "pyframes"))
 
 # ==================== LOAD FILES ====================
-
 with open(os.path.join(opt.work_dir, opt.reference, "tracks.pckl"), "rb") as fil:
     tracks = pickle.load(fil, encoding="latin1")
 
@@ -38,9 +36,7 @@ flist = glob.glob(os.path.join(opt.frames_dir, opt.reference, "*.jpg"))
 flist.sort()
 
 # ==================== SMOOTH FACES ====================
-
 faces = [[] for i in range(len(flist))]
-
 for tidx, track in enumerate(tracks):
     mean_dists = numpy.mean(numpy.stack(dists[tidx], 1), 1)
     minidx = numpy.argmin(mean_dists, 0)
@@ -64,7 +60,6 @@ for tidx, track in enumerate(tracks):
         )
 
 # ==================== ADD DETECTIONS TO VIDEO ====================
-
 first_image = cv2.imread(flist[0])
 
 fw = first_image.shape[1]
@@ -75,10 +70,8 @@ vOut = cv2.VideoWriter(os.path.join(opt.avi_dir, opt.reference, "video_only.avi"
 
 for fidx, fname in enumerate(flist):
     image = cv2.imread(fname)
-
     for face in faces[fidx]:
         clr = max(min(face["conf"] * 25, 255), 0)
-
         cv2.rectangle(
             image,
             (int(face["x"] - face["s"]), int(face["y"] - face["s"])),
@@ -95,15 +88,12 @@ for fidx, fname in enumerate(flist):
             (255, 255, 255),
             2,
         )
-
     vOut.write(image)
-
     print("Frame %d" % fidx)
 
 vOut.release()
 
 # ========== COMBINE AUDIO AND VIDEO FILES ==========
-
 command = "ffmpeg -y -i %s -i %s -c:v copy -c:a copy %s" % (
     os.path.join(opt.avi_dir, opt.reference, "video_only.avi"),
     os.path.join(opt.avi_dir, opt.reference, "audio.wav"),

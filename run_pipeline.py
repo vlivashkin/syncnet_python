@@ -75,8 +75,8 @@ def track_shot(opt, scenefaces):
             bboxes_i = np.stack(bboxes_i, axis=1)
 
             if (
-                    max(np.mean(bboxes_i[:, 2] - bboxes_i[:, 0]), np.mean(bboxes_i[:, 3] - bboxes_i[:, 1]))
-                    > opt.min_face_size
+                max(np.mean(bboxes_i[:, 2] - bboxes_i[:, 0]), np.mean(bboxes_i[:, 3] - bboxes_i[:, 1]))
+                > opt.min_face_size
             ):
                 tracks.append({"frame": frame_i, "bbox": bboxes_i})
 
@@ -113,7 +113,7 @@ def crop_video(opt, track, cropfile):
         my = dets["y"][fidx] + bsi  # BBox center Y
         mx = dets["x"][fidx] + bsi  # BBox center X
 
-        face = frame[int(my - bs): int(my + bs * (1 + 2 * cs)), int(mx - bs * (1 + cs)): int(mx + bs * (1 + cs))]
+        face = frame[int(my - bs) : int(my + bs * (1 + 2 * cs)), int(mx - bs * (1 + cs)) : int(mx + bs * (1 + cs))]
         vOut.write(cv2.resize(face, (224, 224)))
 
     audiotmp = os.path.join(opt.tmp_dir, opt.reference, "audio.wav")
@@ -275,7 +275,7 @@ if __name__ == "__main__":
     alltracks = []
     for shot in scene:
         if shot[1].frame_num - shot[0].frame_num >= opt.min_track:
-            alltracks.extend(track_shot(opt, faces[shot[0].frame_num: shot[1].frame_num]))
+            alltracks.extend(track_shot(opt, faces[shot[0].frame_num : shot[1].frame_num]))
 
     # ========== FACE TRACK CROP ==========
     vidtracks = []
