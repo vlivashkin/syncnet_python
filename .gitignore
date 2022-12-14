@@ -45,3 +45,5 @@ utils/
 *.pth
 
 .idea
+temp
+weights

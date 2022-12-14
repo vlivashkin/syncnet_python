@@ -15,7 +15,7 @@ import python_speech_features
 from scipy import signal
 from scipy.io import wavfile
 
-from SyncNetModel import *
+from .syncnet_model import *
 
 
 # ==================== Get OFFSET ====================
@@ -40,10 +40,16 @@ def calc_pdist(feat1, feat2, vshift=10):
 
 
 class SyncNetInstance(torch.nn.Module):
-    def __init__(self, dropout=0, num_layers_in_fc_layers=1024):
+    def __init__(self, dropout=0, num_layers_in_fc_layers=1024, device='cuda:0'):
         super(SyncNetInstance, self).__init__()
+        self.device = device
+        self.__S__ = S(num_layers_in_fc_layers=num_layers_in_fc_layers).to(self.device)
 
-        self.__S__ = S(num_layers_in_fc_layers=num_layers_in_fc_layers).cuda()
+    def load_parameters(self, path):
+        loaded_state = torch.load(path, map_location=lambda storage, loc: storage)
+        self_state = self.__S__.state_dict()
+        for name, param in loaded_state.items():
+            self_state[name].copy_(param)
 
     def evaluate(self, opt, videofile):
         self.__S__.eval()
@@ -54,7 +60,6 @@ class SyncNetInstance(torch.nn.Module):
 
         if os.path.exists(os.path.join(opt.tmp_dir, opt.reference)):
             rmtree(os.path.join(opt.tmp_dir, opt.reference))
-
         os.makedirs(os.path.join(opt.tmp_dir, opt.reference))
 
         command = "ffmpeg -y -i %s -threads 1 -f image2 %s" % (
@@ -124,14 +129,14 @@ class SyncNetInstance(torch.nn.Module):
                 imtv[:, :, vframe : vframe + 5, :, :] for vframe in range(i, min(lastframe, i + opt.batch_size))
             ]
             im_in = torch.cat(im_batch, 0)
-            im_out = self.__S__.forward_lip(im_in.cuda())
+            im_out = self.__S__.forward_lip(im_in.to(self.device))
             im_feat.append(im_out.data.cpu())
 
             cc_batch = [
                 cct[:, :, :, vframe * 4 : vframe * 4 + 20] for vframe in range(i, min(lastframe, i + opt.batch_size))
             ]
             cc_in = torch.cat(cc_batch, 0)
-            cc_out = self.__S__.forward_aud(cc_in.cuda())
+            cc_out = self.__S__.forward_aud(cc_in.to(self.device))
             cc_feat.append(cc_out.data.cpu())
 
         im_feat = torch.cat(im_feat, 0)
@@ -162,10 +167,9 @@ class SyncNetInstance(torch.nn.Module):
         print("AV offset: \t%d \nMin dist: \t%.3f\nConfidence: \t%.3f" % (offset, minval, conf))
 
         dists_npy = numpy.array([dist.numpy() for dist in dists])
-        return offset.numpy(), conf.numpy(), dists_npy
+        return offset.numpy(), minval.numpy(), conf.numpy(), dists_npy
 
     def extract_feature(self, opt, videofile):
-
         self.__S__.eval()
 
         # ========== ==========
@@ -202,7 +206,7 @@ class SyncNetInstance(torch.nn.Module):
                 imtv[:, :, vframe : vframe + 5, :, :] for vframe in range(i, min(lastframe, i + opt.batch_size))
             ]
             im_in = torch.cat(im_batch, 0)
-            im_out = self.__S__.forward_lipfeat(im_in.cuda())
+            im_out = self.__S__.forward_lipfeat(im_in.to(self.device))
             im_feat.append(im_out.data.cpu())
 
         im_feat = torch.cat(im_feat, 0)
@@ -214,11 +218,3 @@ class SyncNetInstance(torch.nn.Module):
         print("Compute time %.3f sec." % (time.time() - tS))
 
         return im_feat
-
-    def loadParameters(self, path):
-        loaded_state = torch.load(path, map_location=lambda storage, loc: storage)
-
-        self_state = self.__S__.state_dict()
-
-        for name, param in loaded_state.items():
-            self_state[name].copy_(param)

@@ -1,13 +1,9 @@
-#!/usr/bin/python
-
-import argparse
 import glob
 import os
 import pdb
 import pickle
 import subprocess
 import time
-from shutil import rmtree
 
 import cv2
 import numpy as np
@@ -19,7 +15,8 @@ from scipy import signal
 from scipy.interpolate import interp1d
 from scipy.io import wavfile
 
-from detectors import S3FD
+from syncnet.config import Config
+from syncnet.s3fd import S3FD
 
 
 def bb_intersection_over_union(boxA, boxB):
@@ -36,7 +33,7 @@ def bb_intersection_over_union(boxA, boxB):
     return iou
 
 
-def track_shot(opt, scenefaces):
+def track_shot(opt: Config, scenefaces):
     """
     face tracking
     """
@@ -75,8 +72,8 @@ def track_shot(opt, scenefaces):
             bboxes_i = np.stack(bboxes_i, axis=1)
 
             if (
-                max(np.mean(bboxes_i[:, 2] - bboxes_i[:, 0]), np.mean(bboxes_i[:, 3] - bboxes_i[:, 1]))
-                > opt.min_face_size
+                    max(np.mean(bboxes_i[:, 2] - bboxes_i[:, 0]), np.mean(bboxes_i[:, 3] - bboxes_i[:, 1]))
+                    > opt.min_face_size
             ):
                 tracks.append({"frame": frame_i, "bbox": bboxes_i})
 
@@ -113,7 +110,7 @@ def crop_video(opt, track, cropfile):
         my = dets["y"][fidx] + bsi  # BBox center Y
         mx = dets["x"][fidx] + bsi  # BBox center X
 
-        face = frame[int(my - bs) : int(my + bs * (1 + 2 * cs)), int(mx - bs * (1 + cs)) : int(mx + bs * (1 + cs))]
+        face = frame[int(my - bs): int(my + bs * (1 + 2 * cs)), int(mx - bs * (1 + cs)): int(mx + bs * (1 + cs))]
         vOut.write(cv2.resize(face, (224, 224)))
 
     audiotmp = os.path.join(opt.tmp_dir, opt.reference, "audio.wav")
@@ -150,8 +147,8 @@ def crop_video(opt, track, cropfile):
     return {"track": track, "proc_track": dets}
 
 
-def face_detection(opt):
-    DET = S3FD(device="cuda")
+def face_detection(opt, device):
+    DET = S3FD(device=device)
 
     flist = glob.glob(os.path.join(opt.frames_dir, opt.reference, "*.jpg"))
     flist.sort()
@@ -204,87 +201,3 @@ def scene_detection(opt):
     print("%s - scenes detected %d" % (os.path.join(opt.avi_dir, opt.reference, "video.avi"), len(scene_list)))
 
     return scene_list
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="FaceTracker")
-    parser.add_argument("--data_dir", type=str, default="data/work", help="Output direcotry")
-    parser.add_argument("--videofile", type=str, default="", help="Input video file")
-    parser.add_argument("--reference", type=str, default="", help="Video reference")
-    parser.add_argument("--facedet_scale", type=float, default=0.25, help="Scale factor for face detection")
-    parser.add_argument("--crop_scale", type=float, default=0.40, help="Scale bounding box")
-    parser.add_argument("--min_track", type=int, default=100, help="Minimum facetrack duration")
-    parser.add_argument("--frame_rate", type=int, default=25, help="Frame rate")
-    parser.add_argument(
-        "--num_failed_det", type=int, default=25, help="Number of missed detections allowed before tracking is stopped"
-    )
-    parser.add_argument("--min_face_size", type=int, default=100, help="Minimum face size in pixels")
-
-    opt = parser.parse_args()
-    setattr(opt, "avi_dir", os.path.join(opt.data_dir, "pyavi"))
-    setattr(opt, "tmp_dir", os.path.join(opt.data_dir, "pytmp"))
-    setattr(opt, "work_dir", os.path.join(opt.data_dir, "pywork"))
-    setattr(opt, "crop_dir", os.path.join(opt.data_dir, "pycrop"))
-    setattr(opt, "frames_dir", os.path.join(opt.data_dir, "pyframes"))
-
-    # ========== DELETE EXISTING DIRECTORIES ==========
-    if os.path.exists(os.path.join(opt.work_dir, opt.reference)):
-        rmtree(os.path.join(opt.work_dir, opt.reference))
-    if os.path.exists(os.path.join(opt.crop_dir, opt.reference)):
-        rmtree(os.path.join(opt.crop_dir, opt.reference))
-    if os.path.exists(os.path.join(opt.avi_dir, opt.reference)):
-        rmtree(os.path.join(opt.avi_dir, opt.reference))
-    if os.path.exists(os.path.join(opt.frames_dir, opt.reference)):
-        rmtree(os.path.join(opt.frames_dir, opt.reference))
-    if os.path.exists(os.path.join(opt.tmp_dir, opt.reference)):
-        rmtree(os.path.join(opt.tmp_dir, opt.reference))
-
-    # ========== MAKE NEW DIRECTORIES ==========
-    os.makedirs(os.path.join(opt.work_dir, opt.reference))
-    os.makedirs(os.path.join(opt.crop_dir, opt.reference))
-    os.makedirs(os.path.join(opt.avi_dir, opt.reference))
-    os.makedirs(os.path.join(opt.frames_dir, opt.reference))
-    os.makedirs(os.path.join(opt.tmp_dir, opt.reference))
-
-    # ========== CONVERT VIDEO AND EXTRACT FRAMES ==========
-    command = "ffmpeg -y -i %s -qscale:v 2 -async 1 -r 25 %s" % (
-        opt.videofile,
-        os.path.join(opt.avi_dir, opt.reference, "video.avi"),
-    )
-    output = subprocess.call(command, shell=True, stdout=None)
-
-    command = "ffmpeg -y -i %s -qscale:v 2 -threads 1 -f image2 %s" % (
-        os.path.join(opt.avi_dir, opt.reference, "video.avi"),
-        os.path.join(opt.frames_dir, opt.reference, "%06d.jpg"),
-    )
-    output = subprocess.call(command, shell=True, stdout=None)
-
-    command = "ffmpeg -y -i %s -ac 1 -vn -acodec pcm_s16le -ar 16000 %s" % (
-        os.path.join(opt.avi_dir, opt.reference, "video.avi"),
-        os.path.join(opt.avi_dir, opt.reference, "audio.wav"),
-    )
-    output = subprocess.call(command, shell=True, stdout=None)
-
-    # ========== FACE DETECTION ==========
-    faces = face_detection(opt)
-
-    # ========== SCENE DETECTION ==========
-    scene = scene_detection(opt)
-
-    # ========== FACE TRACKING ==========
-    alltracks = []
-    for shot in scene:
-        if shot[1].frame_num - shot[0].frame_num >= opt.min_track:
-            alltracks.extend(track_shot(opt, faces[shot[0].frame_num : shot[1].frame_num]))
-
-    # ========== FACE TRACK CROP ==========
-    vidtracks = []
-    for ii, track in enumerate(alltracks):
-        vidtracks.append(crop_video(opt, track, os.path.join(opt.crop_dir, opt.reference, "%05d" % ii)))
-
-    # ========== SAVE RESULTS ==========
-    savepath = os.path.join(opt.work_dir, opt.reference, "tracks.pckl")
-    with open(savepath, "wb") as fil:
-        pickle.dump(vidtracks, fil)
-
-    rmtree(os.path.join(opt.tmp_dir, opt.reference))

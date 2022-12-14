@@ -7,12 +7,12 @@ import torch
 from .box_utils import nms_
 from .nets import S3FDNet
 
-PATH_WEIGHT = "./detectors/s3fd/weights/sfd_face.pth"
+PATH_WEIGHT = "./weights/sfd_face.pth"
 img_mean = np.array([104.0, 117.0, 123.0])[:, np.newaxis, np.newaxis].astype("float32")
 
 
 class S3FD:
-    def __init__(self, device="cuda"):
+    def __init__(self, device="cpu"):
         tstamp = time.time()
         self.device = device
 
