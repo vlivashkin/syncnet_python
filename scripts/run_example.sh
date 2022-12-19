@@ -1,3 +1,3 @@
 #!/bin/bash
 
-python3.9 ./metric.py --video_path ./scripts/example.avi --device cpu
+python3.9 ./syncnet_metric.py --video_path ./scripts/example.avi --device cpu

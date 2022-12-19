@@ -40,7 +40,7 @@ def calc_pdist(feat1, feat2, vshift=10):
 
 
 class SyncNetInstance(torch.nn.Module):
-    def __init__(self, dropout=0, num_layers_in_fc_layers=1024, device='cuda:0'):
+    def __init__(self, dropout=0, num_layers_in_fc_layers=1024, device="cuda:0"):
         super(SyncNetInstance, self).__init__()
         self.device = device
         self.__S__ = S(num_layers_in_fc_layers=num_layers_in_fc_layers).to(self.device)

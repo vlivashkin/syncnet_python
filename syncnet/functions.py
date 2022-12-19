@@ -16,7 +16,7 @@ from scipy.interpolate import interp1d
 from scipy.io import wavfile
 
 from syncnet.config import Config
-from syncnet.s3fd import S3FD
+from syncnet.s3fd.s3fd import S3FD
 
 
 def bb_intersection_over_union(boxA, boxB):
@@ -45,7 +45,7 @@ def track_shot(opt: Config, scenefaces):
         track = []
         for framefaces in scenefaces:
             for face in framefaces:
-                if track == []:
+                if len(track) == 0:
                     track.append(face)
                     framefaces.remove(face)
                 elif face["frame"] - track[-1]["frame"] <= opt.num_failed_det:
@@ -72,8 +72,8 @@ def track_shot(opt: Config, scenefaces):
             bboxes_i = np.stack(bboxes_i, axis=1)
 
             if (
-                    max(np.mean(bboxes_i[:, 2] - bboxes_i[:, 0]), np.mean(bboxes_i[:, 3] - bboxes_i[:, 1]))
-                    > opt.min_face_size
+                max(np.mean(bboxes_i[:, 2] - bboxes_i[:, 0]), np.mean(bboxes_i[:, 3] - bboxes_i[:, 1]))
+                > opt.min_face_size
             ):
                 tracks.append({"frame": frame_i, "bbox": bboxes_i})
 
@@ -110,7 +110,7 @@ def crop_video(opt, track, cropfile):
         my = dets["y"][fidx] + bsi  # BBox center Y
         mx = dets["x"][fidx] + bsi  # BBox center X
 
-        face = frame[int(my - bs): int(my + bs * (1 + 2 * cs)), int(mx - bs * (1 + cs)): int(mx + bs * (1 + cs))]
+        face = frame[int(my - bs) : int(my + bs * (1 + 2 * cs)), int(mx - bs * (1 + cs)) : int(mx + bs * (1 + cs))]
         vOut.write(cv2.resize(face, (224, 224)))
 
     audiotmp = os.path.join(opt.tmp_dir, opt.reference, "audio.wav")
@@ -120,7 +120,7 @@ def crop_video(opt, track, cropfile):
     vOut.release()
 
     # ========== CROP AUDIO FILE ==========
-    command = "ffmpeg -y -i %s -ss %.3f -to %.3f %s" % (
+    command = "ffmpeg -hide_banner -y -i %s -ss %.3f -to %.3f %s" % (
         os.path.join(opt.avi_dir, opt.reference, "audio.wav"),
         audiostart,
         audioend,
@@ -133,7 +133,7 @@ def crop_video(opt, track, cropfile):
     sample_rate, audio = wavfile.read(audiotmp)
 
     # ========== COMBINE AUDIO AND VIDEO FILES ==========
-    command = "ffmpeg -y -i %st.avi -i %s -c:v copy -c:a copy %s.avi" % (cropfile, audiotmp, cropfile)
+    command = "ffmpeg -hide_banner -y -i %st.avi -i %s -c:v copy -c:a copy %s.avi" % (cropfile, audiotmp, cropfile)
     output = subprocess.call(command, shell=True, stdout=None)
     if output != 0:
         pdb.set_trace()
@@ -148,7 +148,7 @@ def crop_video(opt, track, cropfile):
 
 
 def face_detection(opt, device):
-    DET = S3FD(device=device)
+    DET = S3FD(weights_path=opt.s3df_weights_path, device=device)
 
     flist = glob.glob(os.path.join(opt.frames_dir, opt.reference, "*.jpg"))
     flist.sort()
