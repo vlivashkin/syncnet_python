@@ -108,7 +108,7 @@ class SyncNetMetric:
         return offsets, minvals, confs, dists
 
     def cleanup(self):
-        shutil.rmtree("dir_path")
+        shutil.rmtree(self.opt.tmp_dir)
 
 
 if __name__ == "__main__":

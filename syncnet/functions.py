@@ -148,7 +148,7 @@ def crop_video(opt, track, cropfile):
 
 
 def face_detection(opt, device):
-    DET = S3FD(weights_path=opt.s3df_weights_path, device=device)
+    DET = S3FD(weights_path=opt.s3fd_weights_path, device=device)
 
     flist = glob.glob(os.path.join(opt.frames_dir, opt.reference, "*.jpg"))
     flist.sort()
