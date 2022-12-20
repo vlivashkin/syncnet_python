@@ -17,7 +17,7 @@ class SyncNetMetric:
         video_path: str,
         name: str = None,
         temp_dir="./temp",
-        s3fd_weights_path="./weights/std_face.pth",
+        s3fd_weights_path="./weights/sfd_face.pth",
         syncnet_weights_path="./weights/syncnet_v2.model",
         device="cuda:0",
     ):
