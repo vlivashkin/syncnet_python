@@ -185,7 +185,9 @@ def face_detection(opt: Config, device: str) -> List[np.array]:
 
         elapsed_time = time.time() - start_time
 
-        log.debug(f"{opt.avi_dir}/{opt.reference}/video.avi-{fidx:05d}; {len(dets[-1])} dets; {1 / elapsed_time:.2f} Hz")
+        log.debug(
+            f"{opt.avi_dir}/{opt.reference}/video.avi-{fidx:05d}; {len(dets[-1])} dets; {1 / elapsed_time:.2f} Hz"
+        )
 
     savepath = f"{opt.work_dir}/{opt.reference}/faces.pckl"
     with open(savepath, "wb") as fil:

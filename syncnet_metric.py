@@ -86,7 +86,7 @@ class SyncNetMetric:
         alltracks = []
         for shot in scene:
             if shot[1].frame_num - shot[0].frame_num >= self.opt.min_track:
-                alltracks.extend(track_shot(self.opt, faces[shot[0].frame_num: shot[1].frame_num]))
+                alltracks.extend(track_shot(self.opt, faces[shot[0].frame_num : shot[1].frame_num]))
 
         # ========== FACE TRACK CROP ==========
         vidtracks = []
