@@ -1,7 +1,6 @@
 import glob
 import logging
 import os
-import pdb
 import pickle
 import subprocess
 import time
@@ -16,7 +15,6 @@ from scenedetect.stats_manager import StatsManager
 from scenedetect.video_manager import VideoManager
 from scipy import signal
 from scipy.interpolate import interp1d
-from scipy.io import wavfile
 
 from syncnet.config import Config
 from syncnet.s3fd.s3fd import S3FD
@@ -24,7 +22,17 @@ from syncnet.s3fd.s3fd import S3FD
 log = logging.getLogger(__name__)
 
 
-def bb_intersection_over_union(boxA, boxB):
+def call_ffmpeg(command: List[str], debug=False):
+    log.debug(f"FFMpeg command: {' '.join(command)}")
+    if not debug:
+        return_code = subprocess.call(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    else:
+        return_code = subprocess.call(command)
+    if return_code != 0:
+        raise RuntimeError(f"ffmpeg returned status {return_code}")
+
+
+def bb_intersection_over_union(boxA: np.array, boxB: np.array) -> float:
     xA = max(boxA[0], boxB[0])
     yA = max(boxA[1], boxB[1])
     xB = min(boxA[2], boxB[2])
@@ -134,9 +142,7 @@ def crop_video(opt: Config, track: Dict, cropfile: str) -> Dict:
         audiotmp
     ]
     # fmt: on
-    returncode = subprocess.call(command, shell=True, stdout=None)
-    if returncode != 0:
-        pdb.set_trace()
+    call_ffmpeg(command)
 
     # sample_rate, audio = wavfile.read(audiotmp)
 
@@ -144,19 +150,15 @@ def crop_video(opt: Config, track: Dict, cropfile: str) -> Dict:
     # fmt: off
     command = [
         "ffmpeg", "-hide_banner", "-y",
-        "-i", "{cropfile}t.avi",
+        "-i", f"{cropfile}t.avi",
         "-i", audiotmp,
         "-c:v", "copy",
         "-c:a", "copy",
-        "{cropfile}.avi"
+        f"{cropfile}.avi"
     ]
     # fmt: on
-    returncode = subprocess.call(command, shell=True, stdout=None)
-    if returncode != 0:
-        pdb.set_trace()
-
-    log.info(f"Written {cropfile}")
-
+    call_ffmpeg(command)
+    log.debug(f"Written {cropfile}")
     os.remove(cropfile + "t.avi")
 
     log.info(f"Mean pos: x {np.mean(dets['x']):.2f} y {np.mean(dets['y']):.2f} s {np.mean(dets['s']):.2f}")
@@ -183,7 +185,7 @@ def face_detection(opt: Config, device: str) -> List[np.array]:
 
         elapsed_time = time.time() - start_time
 
-        log.info(f"{opt.avi_dir}/{opt.reference}/video.avi-{fidx:05d}; {len(dets[-1])} dets; {1 / elapsed_time:.2f} Hz")
+        log.debug(f"{opt.avi_dir}/{opt.reference}/video.avi-{fidx:05d}; {len(dets[-1])} dets; {1 / elapsed_time:.2f} Hz")
 
     savepath = f"{opt.work_dir}/{opt.reference}/faces.pckl"
     with open(savepath, "wb") as fil:
@@ -212,6 +214,6 @@ def scene_detection(opt: Config) -> List[Tuple[FrameTimecode, FrameTimecode]]:
     with open(savepath, "wb") as fil:
         pickle.dump(scene_list, fil)
 
-    log.info(f"{opt.avi_dir}/{opt.reference}/video.avi - scenes detected {len(scene_list)}")
+    log.info(f"{len(scene_list)} scenes detected")
 
     return scene_list

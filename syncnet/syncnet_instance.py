@@ -6,13 +6,11 @@ import glob
 import logging
 import math
 import os
-import subprocess
 import time
 from shutil import rmtree
 from typing import Tuple
 
 import cv2
-import numpy
 import numpy as np
 import python_speech_features
 import torch
@@ -20,6 +18,7 @@ from scipy import signal
 from scipy.io import wavfile
 
 from syncnet.config import Config
+from syncnet.functions import call_ffmpeg
 from syncnet.syncnet_model import S
 
 log = logging.getLogger(__name__)
@@ -31,7 +30,6 @@ log = logging.getLogger(__name__)
 def calc_pdist(feat1, feat2, vshift=10):
     win_size = vshift * 2 + 1
     feat2p = torch.nn.functional.pad(feat2, (0, 0, vshift, vshift))
-
     dists = []
     for i in range(0, len(feat1)):
         dists.append(
@@ -55,7 +53,7 @@ class SyncNetInstance(torch.nn.Module):
         for name, param in loaded_state.items():
             self_state[name].copy_(param)
 
-    def evaluate(self, opt: Config, videofile: str) -> Tuple[np.array, np.array, np.array, np.array]:
+    def evaluate(self, opt: Config, video_path: str) -> Tuple[np.array, np.array, np.array, np.array]:
         self.__S__.eval()
 
         # ========== ==========
@@ -70,19 +68,18 @@ class SyncNetInstance(torch.nn.Module):
         # fmt: off
         command = [
             "ffmpeg", "-hide_banner", "-y",
-            "-i", videofile,
+            "-i", video_path,
             "-threads", "1",
             "-f", "image2",
             f"{opt.tmp_dir}/{opt.reference}/%06d.jpg"
         ]
         # fmt: on
-        returncode = subprocess.call(command, shell=True, stdout=None)
-        assert returncode == 0
+        call_ffmpeg(command)
 
         # fmt: off
         command = [
             "ffmpeg", "-hide_banner", "-y",
-            "-i", videofile,
+            "-i", video_path,
             "-async", "1",
             "-ac", "1",
             "-vn",
@@ -91,8 +88,7 @@ class SyncNetInstance(torch.nn.Module):
             f"{opt.tmp_dir}/{opt.reference}/audio.wav"
         ]
         # fmt: on
-        returncode = subprocess.call(command, shell=True, stdout=None)
-        assert returncode == 0
+        call_ffmpeg(command)
 
         # ========== ==========
         # Load video
@@ -105,9 +101,9 @@ class SyncNetInstance(torch.nn.Module):
         for fname in flist:
             images.append(cv2.imread(fname))
 
-        im = numpy.stack(images, axis=3)
-        im = numpy.expand_dims(im, axis=0)
-        im = numpy.transpose(im, (0, 3, 4, 1, 2))
+        im = np.stack(images, axis=3)
+        im = np.expand_dims(im, axis=0)
+        im = np.transpose(im, (0, 3, 4, 1, 2))
 
         imtv = torch.autograd.Variable(torch.from_numpy(im.astype(float)).float())
 
@@ -117,9 +113,9 @@ class SyncNetInstance(torch.nn.Module):
 
         sample_rate, audio = wavfile.read(f"{opt.tmp_dir}/{opt.reference}/audio.wav")
         mfcc = zip(*python_speech_features.mfcc(audio, sample_rate))
-        mfcc = numpy.stack([numpy.array(i) for i in mfcc])
+        mfcc = np.stack([np.array(i) for i in mfcc])
 
-        cc = numpy.expand_dims(numpy.expand_dims(mfcc, axis=0), axis=0)
+        cc = np.expand_dims(np.expand_dims(mfcc, axis=0), axis=0)
         cct = torch.autograd.Variable(torch.from_numpy(cc.astype(float)).float())
 
         # ========== ==========
@@ -128,7 +124,7 @@ class SyncNetInstance(torch.nn.Module):
 
         audio_length, video_length = float(len(audio)) / 16000, float(len(images)) / 25
         if audio_length != video_length:
-            log.info(f"WARNING: Audio ({audio_length:.4f}s) and video ({video_length:.4f}s) lengths are different.")
+            log.warning(f"Audio ({audio_length:.4f}s) and video ({video_length:.4f}s) lengths are different.")
 
         min_length = min(len(images), math.floor(len(audio) / 640))
 
@@ -159,11 +155,11 @@ class SyncNetInstance(torch.nn.Module):
         im_feat = torch.cat(im_feat, 0)
         cc_feat = torch.cat(cc_feat, 0)
 
+        log.debug(f"Compute time {time.time() - tS:.3f} sec.")
+
         # ========== ==========
         # Compute offset
         # ========== ==========
-
-        log.info(f"Compute time {time.time() - tS:.3f} sec.")
 
         dists = calc_pdist(im_feat, cc_feat, vshift=opt.vshift)
         mdist = torch.mean(torch.stack(dists, 1), 1)
@@ -173,15 +169,15 @@ class SyncNetInstance(torch.nn.Module):
         offset = opt.vshift - minidx
         conf = torch.median(mdist) - minval
 
-        fdist = numpy.stack([dist[minidx].numpy() for dist in dists])
-        # fdist   = numpy.pad(fdist, (3,3), 'constant', constant_values=15)
+        fdist = np.stack([dist[minidx].numpy() for dist in dists])
+        # fdist = np.pad(fdist, (3,3), 'constant', constant_values=15)
         fconf = torch.median(mdist).numpy() - fdist
         fconfm = signal.medfilt(fconf, kernel_size=9)
 
-        numpy.set_log.infooptions(formatter={"float": "{: 0.3f}".format})
-        log.info("Framewise conf:")
-        log.info(fconfm)
-        log.info(f"AV offset:\t{offset}\nMin dist:\t{minval:.3f}\nConfidence:\t{conf:.3f}")
+        # np.set_log.infooptions(formatter={"float": "{: 0.3f}".format})
+        log.debug("Framewise conf:")
+        log.debug(fconfm)
+        log.info(f"AV offset: {offset}, LSE-D: {minval:.3f}, LSE-C: {conf:.3f}")
 
-        dists_npy = numpy.array([dist.numpy() for dist in dists])
+        dists_npy = np.array([dist.numpy() for dist in dists])
         return offset.numpy(), minval.numpy(), conf.numpy(), dists_npy

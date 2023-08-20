@@ -5,13 +5,12 @@ import logging
 import os
 import pickle
 import shutil
-import subprocess
 from typing import Tuple, List
 
 import numpy as np
 
 from syncnet.config import Config
-from syncnet.functions import face_detection, scene_detection, track_shot, crop_video
+from syncnet.functions import face_detection, scene_detection, track_shot, crop_video, call_ffmpeg
 from syncnet.syncnet_instance import SyncNetInstance
 
 log = logging.getLogger(__name__)
@@ -50,8 +49,7 @@ class SyncNetMetric:
             f"{self.opt.avi_dir}/{self.opt.reference}/video.avi",
         ]
         # fmt: on
-        returncode = subprocess.call(command, shell=True, stdout=None)
-        assert returncode == 0
+        call_ffmpeg(command)
 
         # fmt: off
         command = [
@@ -63,8 +61,7 @@ class SyncNetMetric:
             f"{self.opt.frames_dir}/{self.opt.reference}/%06d.jpg",
         ]
         # fmt: on
-        returncode = subprocess.call(command, shell=True, stdout=None)
-        assert returncode == 0
+        call_ffmpeg(command)
 
         # fmt: off
         command = [
@@ -77,8 +74,7 @@ class SyncNetMetric:
             f"{self.opt.avi_dir}/{self.opt.reference}/audio.wav"
         ]
         # fmt: on
-        returncode = subprocess.call(command, shell=True, stdout=None)
-        assert returncode == 0
+        call_ffmpeg(command)
 
         # ========== FACE DETECTION ==========
         faces = face_detection(self.opt, self.device)
@@ -108,7 +104,7 @@ class SyncNetMetric:
         # ==================== LOAD MODEL AND FILE LIST ====================
         s = SyncNetInstance(device=self.device)
         s.load_parameters(self.opt.syncnet_weights_path)
-        log.info(f"Model {self.opt.syncnet_weights_path} loaded.")
+        log.debug(f"Model {self.opt.syncnet_weights_path} loaded.")
 
         flist = glob.glob(os.path.join(self.opt.crop_dir, self.opt.reference, "0*.avi"))
         flist.sort()
@@ -116,7 +112,7 @@ class SyncNetMetric:
         # ==================== GET OFFSETS ====================
         offsets, minvals, confs, dists = [], [], [], []
         for idx, fname in enumerate(flist):
-            offset, minval, conf, dist = s.evaluate(self.opt, videofile=fname)
+            offset, minval, conf, dist = s.evaluate(self.opt, video_path=fname)
             offsets.append(offset)
             minvals.append(minval)
             confs.append(conf)

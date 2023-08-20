@@ -10,7 +10,7 @@ class Config:
         temp_dir="./temp",
         facedet_scale=0.25,
         crop_scale=0.40,
-        min_track=100,
+        min_track=50,
         frame_rate=25,
         num_failed_det=25,
         min_face_size=100,

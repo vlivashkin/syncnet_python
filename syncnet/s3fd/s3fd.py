@@ -18,12 +18,12 @@ class S3FD:
         tstamp = time.time()
         self.device = device
 
-        log.info(f"[S3FD] loading with {self.device}")
+        log.debug(f"[S3FD] loading with {self.device}")
         self.net = S3FDNet(device=self.device).to(self.device)
         state_dict = torch.load(weights_path, map_location=self.device)
         self.net.load_state_dict(state_dict)
         self.net.eval()
-        log.info(f"[S3FD] finished loading ({time.time() - tstamp:.4f} sec)")
+        log.debug(f"[S3FD] finished loading ({time.time() - tstamp:.4f} sec)")
 
     def detect_faces(self, image: np.array, conf_th=0.8, scales=[1]) -> np.array:
         w, h = image.shape[1], image.shape[0]
