@@ -1,19 +1,11 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-import torch
+import logging
+
 import torch.nn as nn
 
-
-def save(model, filename):
-    with open(filename, "wb") as f:
-        torch.save(model, f)
-        print("%s saved." % filename)
-
-
-def load(filename):
-    net = torch.load(filename)
-    return net
+log = logging.getLogger(__name__)
 
 
 class S(nn.Module):
@@ -92,7 +84,6 @@ class S(nn.Module):
         mid = mid.view((mid.size()[0], -1))
         # N x (ch x 24)
         out = self.netfcaud(mid)
-
         return out
 
     def forward_lip(self, x):
@@ -100,12 +91,4 @@ class S(nn.Module):
         mid = mid.view((mid.size()[0], -1))
         # N x (ch x 24)
         out = self.netfclip(mid)
-
-        return out
-
-    def forward_lipfeat(self, x):
-        mid = self.netcnnlip(x)
-        out = mid.view((mid.size()[0], -1))
-        # N x (ch x 24)
-
         return out

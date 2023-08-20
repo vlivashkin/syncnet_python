@@ -34,27 +34,20 @@ class Config:
         self.batch_size = batch_size
         self.vshift = vshift
 
-        self.avi_dir = os.path.join(self.data_dir, "pyavi")
-        self.tmp_dir = os.path.join(self.data_dir, "pytmp")
-        self.work_dir = os.path.join(self.data_dir, "pywork")
-        self.crop_dir = os.path.join(self.data_dir, "pycrop")
-        self.frames_dir = os.path.join(self.data_dir, "pyframes")
+        self.avi_dir = f"{self.data_dir}/pyavi"
+        self.tmp_dir = f"{self.data_dir}/pytmp"
+        self.work_dir = f"{self.data_dir}/pywork"
+        self.crop_dir = f"{self.data_dir}/pycrop"
+        self.frames_dir = f"{self.data_dir}/pyframes"
 
-        # ========== DELETE EXISTING DIRECTORIES ==========
-        if os.path.exists(os.path.join(self.work_dir, self.reference)):
-            rmtree(os.path.join(self.work_dir, self.reference))
-        if os.path.exists(os.path.join(self.crop_dir, self.reference)):
-            rmtree(os.path.join(self.crop_dir, self.reference))
-        if os.path.exists(os.path.join(self.avi_dir, self.reference)):
-            rmtree(os.path.join(self.avi_dir, self.reference))
-        if os.path.exists(os.path.join(self.frames_dir, self.reference)):
-            rmtree(os.path.join(self.frames_dir, self.reference))
-        if os.path.exists(os.path.join(self.tmp_dir, self.reference)):
-            rmtree(os.path.join(self.tmp_dir, self.reference))
-
-        # ========== MAKE NEW DIRECTORIES ==========
-        os.makedirs(os.path.join(self.work_dir, self.reference))
-        os.makedirs(os.path.join(self.crop_dir, self.reference))
-        os.makedirs(os.path.join(self.avi_dir, self.reference))
-        os.makedirs(os.path.join(self.frames_dir, self.reference))
-        os.makedirs(os.path.join(self.tmp_dir, self.reference))
+        # ========== DELETE EXISTING AND MAKE NEW DIRECTORIES ==========
+        for folder in [
+            f"{self.work_dir}/{self.reference}",
+            f"{self.crop_dir}/{self.reference}",
+            f"{self.avi_dir}/{self.reference}",
+            f"{self.frames_dir}/{self.reference}",
+            f"{self.tmp_dir}/{self.reference}",
+        ]:
+            if os.path.exists(folder):
+                rmtree(folder)
+            os.makedirs(folder)
