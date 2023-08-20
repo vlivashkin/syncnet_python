@@ -3,6 +3,7 @@
 
 import logging
 
+import torch
 import torch.nn as nn
 
 log = logging.getLogger(__name__)
@@ -78,7 +79,7 @@ class S(nn.Module):
             nn.ReLU(inplace=True),
         )
 
-    def forward_aud(self, x):
+    def forward_aud(self, x: torch.Tensor) -> torch.Tensor:
         mid = self.netcnnaud(x)
         # N x ch x 24 x M
         mid = mid.view((mid.size()[0], -1))
@@ -86,7 +87,7 @@ class S(nn.Module):
         out = self.netfcaud(mid)
         return out
 
-    def forward_lip(self, x):
+    def forward_lip(self, x: torch.Tensor) -> torch.Tensor:
         mid = self.netcnnlip(x)
         mid = mid.view((mid.size()[0], -1))
         # N x (ch x 24)

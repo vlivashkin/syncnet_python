@@ -6,6 +6,9 @@ import os
 import pickle
 import shutil
 import subprocess
+from typing import Tuple, List
+
+import numpy as np
 
 from syncnet.config import Config
 from syncnet.functions import face_detection, scene_detection, track_shot, crop_video
@@ -87,7 +90,7 @@ class SyncNetMetric:
         alltracks = []
         for shot in scene:
             if shot[1].frame_num - shot[0].frame_num >= self.opt.min_track:
-                alltracks.extend(track_shot(self.opt, faces[shot[0].frame_num : shot[1].frame_num]))
+                alltracks.extend(track_shot(self.opt, faces[shot[0].frame_num: shot[1].frame_num]))
 
         # ========== FACE TRACK CROP ==========
         vidtracks = []
@@ -101,7 +104,7 @@ class SyncNetMetric:
 
         shutil.rmtree(f"{self.opt.tmp_dir}/{self.opt.reference}")
 
-    def _inference(self):
+    def _inference(self) -> Tuple[List[np.array], List[np.array], List[np.array], List[np.array]]:
         # ==================== LOAD MODEL AND FILE LIST ====================
         s = SyncNetInstance(device=self.device)
         s.load_parameters(self.opt.syncnet_weights_path)
@@ -125,7 +128,7 @@ class SyncNetMetric:
 
         return offsets, minvals, confs, dists
 
-    def run(self):
+    def run(self) -> Tuple[List[np.array], List[np.array], List[np.array], List[np.array]]:
         self._preprocessing_pipeline()
         offsets, minvals, confs, dists = self._inference()
         return offsets, minvals, confs, dists

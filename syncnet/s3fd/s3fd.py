@@ -25,7 +25,7 @@ class S3FD:
         self.net.eval()
         log.info(f"[S3FD] finished loading ({time.time() - tstamp:.4f} sec)")
 
-    def detect_faces(self, image, conf_th=0.8, scales=[1]):
+    def detect_faces(self, image: np.array, conf_th=0.8, scales=[1]) -> np.array:
         w, h = image.shape[1], image.shape[0]
 
         bboxes = np.empty(shape=(0, 5))

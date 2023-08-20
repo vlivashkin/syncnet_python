@@ -188,7 +188,7 @@ class PriorBox(object):
         self.steps = steps
         self.clip = clip
 
-    def forward(self):
+    def forward(self) -> torch.Tensor:
         mean = []
         for k, fmap in enumerate(self.feature_maps):
             feath = fmap[0]

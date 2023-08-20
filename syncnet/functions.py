@@ -5,9 +5,11 @@ import pdb
 import pickle
 import subprocess
 import time
+from typing import List, Tuple, Dict
 
 import cv2
 import numpy as np
+from scenedetect import FrameTimecode
 from scenedetect.detectors import ContentDetector
 from scenedetect.scene_manager import SceneManager
 from scenedetect.stats_manager import StatsManager
@@ -36,7 +38,7 @@ def bb_intersection_over_union(boxA, boxB):
     return iou
 
 
-def track_shot(opt: Config, scenefaces):
+def track_shot(opt: Config, scenefaces: np.array) -> List[Dict]:
     """
     face tracking
     """
@@ -83,7 +85,7 @@ def track_shot(opt: Config, scenefaces):
     return tracks
 
 
-def crop_video(opt, track, cropfile):
+def crop_video(opt: Config, track: Dict, cropfile: str) -> Dict:
     flist = glob.glob(f"{opt.frames_dir}/{opt.reference}/*.jpg")
     flist.sort()
 
@@ -136,7 +138,7 @@ def crop_video(opt, track, cropfile):
     if returncode != 0:
         pdb.set_trace()
 
-    sample_rate, audio = wavfile.read(audiotmp)
+    # sample_rate, audio = wavfile.read(audiotmp)
 
     # ========== COMBINE AUDIO AND VIDEO FILES ==========
     # fmt: off
@@ -162,7 +164,7 @@ def crop_video(opt, track, cropfile):
     return {"track": track, "proc_track": dets}
 
 
-def face_detection(opt, device):
+def face_detection(opt: Config, device: str) -> List[np.array]:
     DET = S3FD(weights_path=opt.s3fd_weights_path, device=device)
 
     flist = glob.glob(f"{opt.frames_dir}/{opt.reference}/*.jpg")
@@ -190,7 +192,7 @@ def face_detection(opt, device):
     return dets
 
 
-def scene_detection(opt):
+def scene_detection(opt: Config) -> List[Tuple[FrameTimecode, FrameTimecode]]:
     video_manager = VideoManager([f"{opt.avi_dir}/{opt.reference}/video.avi"])
     base_timecode = video_manager.get_base_timecode()
     video_manager.set_downscale_factor()
