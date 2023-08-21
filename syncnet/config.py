@@ -12,6 +12,7 @@ class Config:
         crop_scale=0.40,
         min_track=50,
         frame_rate=25,
+        audio_sample_rate=16000,
         num_failed_det=25,
         min_face_size=100,
         s3fd_weights_path="./weights/sfd_face.pth",
@@ -26,6 +27,7 @@ class Config:
         self.crop_scale = crop_scale
         self.min_track = min_track
         self.frame_rate = frame_rate
+        self.audio_sample_rate = audio_sample_rate
         self.num_failed_det = num_failed_det
         self.min_face_size = min_face_size
 

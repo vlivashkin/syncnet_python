@@ -85,7 +85,7 @@ class SyncNetInstance(torch.nn.Module):
             "-vn",
             "-shortest",
             "-acodec", "pcm_s16le",
-            "-ar", "16000",
+            "-ar", f"{opt.audio_sample_rate}",
             f"{opt.tmp_dir}/{opt.reference}/audio.wav"
         ]
         # fmt: on
@@ -123,11 +123,11 @@ class SyncNetInstance(torch.nn.Module):
         # Check audio and video input length
         # ========== ==========
 
-        audio_length, video_length = float(len(audio)) / 16000, float(len(images)) / 25
+        audio_length, video_length = float(len(audio)) / opt.audio_sample_rate, float(len(images)) / opt.frame_rate
         if audio_length != video_length:
             log.warning(f"Audio ({audio_length:.4f}s) and video ({video_length:.4f}s) lengths are different.")
 
-        min_length = min(len(images), math.floor(len(audio) / 640))
+        min_length = min(len(images), math.floor(len(audio) / (opt.audio_sample_rate / opt.frame_rate)))
 
         # ========== ==========
         # Generate video and audio feats
@@ -149,7 +149,7 @@ class SyncNetInstance(torch.nn.Module):
             cc_batch = [
                 cct[:, :, :, vframe * 4 : vframe * 4 + 20] for vframe in range(i, min(lastframe, i + opt.batch_size))
             ]
-            cc_in = torch.cat(cc_batch, 0)
+            cc_in = torch.cat(cc_batch, 0)  # FIXME: something here fails on 30fps
             cc_out = self.__S__.forward_aud(cc_in.to(self.device))
             cc_feat.append(cc_out.data.cpu())
 

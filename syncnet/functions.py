@@ -97,7 +97,7 @@ def crop_video(opt: Config, track: Dict, cropfile: str) -> Dict:
     flist = glob.glob(f"{opt.frames_dir}/{opt.reference}/*.jpg")
     flist.sort()
 
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     vOut = cv2.VideoWriter(cropfile + "t.mov", fourcc, opt.frame_rate, (224, 224))
 
     dets = {"x": [], "y": [], "s": []}
@@ -137,8 +137,8 @@ def crop_video(opt: Config, track: Dict, cropfile: str) -> Dict:
     command = [
         "ffmpeg", "-hide_banner", "-y",
         "-i", f"{opt.avi_dir}/{opt.reference}/audio.wav",
-        "-ss", f"{audiostart:.3f}",
-        "-to", f"{audioend:.3f}",
+        "-ss", f"{audiostart}",
+        "-to", f"{audioend}",
         audiotmp
     ]
     # fmt: on

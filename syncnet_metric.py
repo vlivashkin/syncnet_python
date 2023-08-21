@@ -45,7 +45,7 @@ class SyncNetMetric:
             "-i", self.opt.videofile,
             "-crf", "17",
             "-async", "1",
-            "-r", "25",
+            "-r", f"{self.opt.frame_rate}",
             f"{self.opt.avi_dir}/{self.opt.reference}/video.mov",
         ]
         # fmt: on
@@ -70,7 +70,7 @@ class SyncNetMetric:
             "-ac", "1",
             "-vn",
             "-acodec", "pcm_s16le",
-            "-ar", "16000",
+            "-ar", f"{self.opt.audio_sample_rate}",
             f"{self.opt.avi_dir}/{self.opt.reference}/audio.wav"
         ]
         # fmt: on
