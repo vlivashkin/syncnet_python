@@ -97,8 +97,8 @@ def crop_video(opt: Config, track: Dict, cropfile: str) -> Dict:
     flist = glob.glob(f"{opt.frames_dir}/{opt.reference}/*.jpg")
     flist.sort()
 
-    fourcc = cv2.VideoWriter_fourcc(*"XVID")
-    vOut = cv2.VideoWriter(cropfile + "t.avi", fourcc, opt.frame_rate, (224, 224))
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    vOut = cv2.VideoWriter(cropfile + "t.mov", fourcc, opt.frame_rate, (224, 224))
 
     dets = {"x": [], "y": [], "s": []}
 
@@ -150,16 +150,16 @@ def crop_video(opt: Config, track: Dict, cropfile: str) -> Dict:
     # fmt: off
     command = [
         "ffmpeg", "-hide_banner", "-y",
-        "-i", f"{cropfile}t.avi",
+        "-i", f"{cropfile}t.mov",
         "-i", audiotmp,
         "-c:v", "copy",
         "-c:a", "copy",
-        f"{cropfile}.avi"
+        f"{cropfile}.mov"
     ]
     # fmt: on
     call_ffmpeg(command)
     log.debug(f"Written {cropfile}")
-    os.remove(cropfile + "t.avi")
+    os.remove(cropfile + "t.mov")
 
     log.info(f"Mean pos: x {np.mean(dets['x']):.2f} y {np.mean(dets['y']):.2f} s {np.mean(dets['s']):.2f}")
 
@@ -186,7 +186,7 @@ def face_detection(opt: Config, device: str) -> List[np.array]:
         elapsed_time = time.time() - start_time
 
         log.debug(
-            f"{opt.avi_dir}/{opt.reference}/video.avi-{fidx:05d}; {len(dets[-1])} dets; {1 / elapsed_time:.2f} Hz"
+            f"{opt.avi_dir}/{opt.reference}/video.mov-{fidx:05d}; {len(dets[-1])} dets; {1 / elapsed_time:.2f} Hz"
         )
 
     savepath = f"{opt.work_dir}/{opt.reference}/faces.pckl"
@@ -197,7 +197,7 @@ def face_detection(opt: Config, device: str) -> List[np.array]:
 
 
 def scene_detection(opt: Config) -> List[Tuple[FrameTimecode, FrameTimecode]]:
-    video_manager = VideoManager([f"{opt.avi_dir}/{opt.reference}/video.avi"])
+    video_manager = VideoManager([f"{opt.avi_dir}/{opt.reference}/video.mov"])
     base_timecode = video_manager.get_base_timecode()
     video_manager.set_downscale_factor()
     video_manager.start()

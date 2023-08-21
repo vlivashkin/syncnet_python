@@ -83,6 +83,7 @@ class SyncNetInstance(torch.nn.Module):
             "-async", "1",
             "-ac", "1",
             "-vn",
+            "-shortest",
             "-acodec", "pcm_s16le",
             "-ar", "16000",
             f"{opt.tmp_dir}/{opt.reference}/audio.wav"

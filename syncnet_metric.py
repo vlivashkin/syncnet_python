@@ -43,10 +43,10 @@ class SyncNetMetric:
         command = [
             "ffmpeg", "-hide_banner", "-y",
             "-i", self.opt.videofile,
-            "-qscale:v", "2",
+            "-crf", "17",
             "-async", "1",
             "-r", "25",
-            f"{self.opt.avi_dir}/{self.opt.reference}/video.avi",
+            f"{self.opt.avi_dir}/{self.opt.reference}/video.mov",
         ]
         # fmt: on
         call_ffmpeg(command)
@@ -54,7 +54,7 @@ class SyncNetMetric:
         # fmt: off
         command = [
             "ffmpeg", "-hide_banner", "-y",
-            "-i", f"{self.opt.avi_dir}/{self.opt.reference}/video.avi",
+            "-i", f"{self.opt.avi_dir}/{self.opt.reference}/video.mov",
             "-qscale:v", "2",
             "-threads", "1",
             "-f", "image2",
@@ -66,7 +66,7 @@ class SyncNetMetric:
         # fmt: off
         command = [
             "ffmpeg", "-hide_banner", "-y",
-            "-i", f"{self.opt.avi_dir}/{self.opt.reference}/video.avi",
+            "-i", f"{self.opt.avi_dir}/{self.opt.reference}/video.mov",
             "-ac", "1",
             "-vn",
             "-acodec", "pcm_s16le",
@@ -106,7 +106,7 @@ class SyncNetMetric:
         s.load_parameters(self.opt.syncnet_weights_path)
         log.debug(f"Model {self.opt.syncnet_weights_path} loaded.")
 
-        flist = glob.glob(os.path.join(self.opt.crop_dir, self.opt.reference, "0*.avi"))
+        flist = glob.glob(os.path.join(self.opt.crop_dir, self.opt.reference, "0*.mov"))
         flist.sort()
 
         # ==================== GET OFFSETS ====================
