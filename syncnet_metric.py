@@ -1,14 +1,19 @@
 #!/usr/bin/python
 import argparse
 import glob
+import logging
 import os
 import pickle
 import shutil
-import subprocess
+from typing import Tuple, List
+
+import numpy as np
 
 from syncnet.config import Config
-from syncnet.functions import face_detection, scene_detection, track_shot, crop_video
+from syncnet.functions import face_detection, scene_detection, track_shot, crop_video, call_ffmpeg
 from syncnet.syncnet_instance import SyncNetInstance
+
+log = logging.getLogger(__name__)
 
 
 class SyncNetMetric:
@@ -34,23 +39,42 @@ class SyncNetMetric:
 
     def _preprocessing_pipeline(self):
         # ========== CONVERT VIDEO AND EXTRACT FRAMES ==========
-        command = "ffmpeg -hide_banner -y -i %s -qscale:v 2 -async 1 -r 25 %s" % (
-            self.opt.videofile,
-            os.path.join(self.opt.avi_dir, self.opt.reference, "video.avi"),
-        )
-        output = subprocess.call(command, shell=True, stdout=None)
+        # fmt: off
+        command = [
+            "ffmpeg", "-hide_banner", "-y",
+            "-i", self.opt.videofile,
+            "-crf", "17",
+            "-async", "1",
+            "-r", f"{self.opt.frame_rate}",
+            f"{self.opt.avi_dir}/{self.opt.reference}/video.mov",
+        ]
+        # fmt: on
+        call_ffmpeg(command)
 
-        command = "ffmpeg -hide_banner -y -i %s -qscale:v 2 -threads 1 -f image2 %s" % (
-            os.path.join(self.opt.avi_dir, self.opt.reference, "video.avi"),
-            os.path.join(self.opt.frames_dir, self.opt.reference, "%06d.jpg"),
-        )
-        output = subprocess.call(command, shell=True, stdout=None)
+        # fmt: off
+        command = [
+            "ffmpeg", "-hide_banner", "-y",
+            "-i", f"{self.opt.avi_dir}/{self.opt.reference}/video.mov",
+            "-qscale:v", "2",
+            "-threads", "1",
+            "-f", "image2",
+            f"{self.opt.frames_dir}/{self.opt.reference}/%06d.jpg",
+        ]
+        # fmt: on
+        call_ffmpeg(command)
 
-        command = "ffmpeg -hide_banner -y -i %s -ac 1 -vn -acodec pcm_s16le -ar 16000 %s" % (
-            os.path.join(self.opt.avi_dir, self.opt.reference, "video.avi"),
-            os.path.join(self.opt.avi_dir, self.opt.reference, "audio.wav"),
-        )
-        output = subprocess.call(command, shell=True, stdout=None)
+        # fmt: off
+        command = [
+            "ffmpeg", "-hide_banner", "-y",
+            "-i", f"{self.opt.avi_dir}/{self.opt.reference}/video.mov",
+            "-ac", "1",
+            "-vn",
+            "-acodec", "pcm_s16le",
+            "-ar", f"{self.opt.audio_sample_rate}",
+            f"{self.opt.avi_dir}/{self.opt.reference}/audio.wav"
+        ]
+        # fmt: on
+        call_ffmpeg(command)
 
         # ========== FACE DETECTION ==========
         faces = face_detection(self.opt, self.device)
@@ -67,42 +91,40 @@ class SyncNetMetric:
         # ========== FACE TRACK CROP ==========
         vidtracks = []
         for ii, track in enumerate(alltracks):
-            vidtracks.append(
-                crop_video(self.opt, track, os.path.join(self.opt.crop_dir, self.opt.reference, "%05d" % ii))
-            )
+            vidtracks.append(crop_video(self.opt, track, f"{self.opt.crop_dir}/{self.opt.reference}/{ii:05d}"))
 
         # ========== SAVE RESULTS ==========
-        savepath = os.path.join(self.opt.work_dir, self.opt.reference, "tracks.pckl")
+        savepath = f"{self.opt.work_dir}/{self.opt.reference}/tracks.pckl"
         with open(savepath, "wb") as fil:
             pickle.dump(vidtracks, fil)
 
-        shutil.rmtree(os.path.join(self.opt.tmp_dir, self.opt.reference))
+        shutil.rmtree(f"{self.opt.tmp_dir}/{self.opt.reference}")
 
-    def _inference(self):
+    def _inference(self) -> Tuple[List[np.array], List[np.array], List[np.array], List[np.array]]:
         # ==================== LOAD MODEL AND FILE LIST ====================
         s = SyncNetInstance(device=self.device)
         s.load_parameters(self.opt.syncnet_weights_path)
-        print("Model %s loaded." % self.opt.syncnet_weights_path)
+        log.debug(f"Model {self.opt.syncnet_weights_path} loaded.")
 
-        flist = glob.glob(os.path.join(self.opt.crop_dir, self.opt.reference, "0*.avi"))
+        flist = glob.glob(os.path.join(self.opt.crop_dir, self.opt.reference, "0*.mov"))
         flist.sort()
 
         # ==================== GET OFFSETS ====================
         offsets, minvals, confs, dists = [], [], [], []
         for idx, fname in enumerate(flist):
-            offset, minval, conf, dist = s.evaluate(self.opt, videofile=fname)
+            offset, minval, conf, dist = s.evaluate(self.opt, video_path=fname)
             offsets.append(offset)
             minvals.append(minval)
             confs.append(conf)
             dists.append(dist)
 
         # ==================== PRINT RESULTS TO FILE ====================
-        with open(os.path.join(self.opt.work_dir, self.opt.reference, "activesd.pckl"), "wb") as fil:
+        with open(f"{self.opt.work_dir}/{self.opt.reference}/activesd.pckl", "wb") as fil:
             pickle.dump(dists, fil)
 
         return offsets, minvals, confs, dists
 
-    def run(self):
+    def run(self) -> Tuple[List[np.array], List[np.array], List[np.array], List[np.array]]:
         self._preprocessing_pipeline()
         offsets, minvals, confs, dists = self._inference()
         return offsets, minvals, confs, dists

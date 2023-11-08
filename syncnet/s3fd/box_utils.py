@@ -35,11 +35,12 @@ def nms_(dets, thresh):
         inds = np.where(ovr <= thresh)[0]
         order = order[inds + 1]
 
-    return np.array(keep).astype(np.int)
+    return np.array(keep).astype(int)
 
 
 def decode(loc, priors, variances):
-    """Decode locations from predictions using priors to undo
+    """
+    Decode locations from predictions using priors to undo
     the encoding we did for offset regression at train time.
     Args:
         loc (tensor): location predictions for loc layers,
@@ -64,7 +65,8 @@ def decode(loc, priors, variances):
 
 
 def nms(boxes, scores, overlap=0.5, top_k=200):
-    """Apply non-maximum suppression at test time to avoid detecting too many
+    """
+    Apply non-maximum suppression at test time to avoid detecting too many
     overlapping bounding boxes for a given object.
     Args:
         boxes: (tensor) The location preds for the img, Shape: [num_priors,4].
@@ -78,20 +80,13 @@ def nms(boxes, scores, overlap=0.5, top_k=200):
     keep = scores.new(scores.size(0)).zero_().long()
     if boxes.numel() == 0:
         return keep, 0
-    x1 = boxes[:, 0]
-    y1 = boxes[:, 1]
-    x2 = boxes[:, 2]
-    y2 = boxes[:, 3]
+    x1, y1, x2, y2 = boxes[:, 0], boxes[:, 1], boxes[:, 2], boxes[:, 3]
     area = torch.mul(x2 - x1, y2 - y1)
     v, idx = scores.sort(0)  # sort in ascending order
     # I = I[v >= 0.01]
     idx = idx[-top_k:]  # indices of the top-k largest vals
-    xx1 = boxes.new()
-    yy1 = boxes.new()
-    xx2 = boxes.new()
-    yy2 = boxes.new()
-    w = boxes.new()
-    h = boxes.new()
+    xx1, yy1, xx2, yy2 = boxes.new(), boxes.new(), boxes.new(), boxes.new()
+    w, h = boxes.new(), boxes.new()
 
     # keep = torch.Tensor()
     count = 0
@@ -193,7 +188,7 @@ class PriorBox(object):
         self.steps = steps
         self.clip = clip
 
-    def forward(self):
+    def forward(self) -> torch.Tensor:
         mean = []
         for k, fmap in enumerate(self.feature_maps):
             feath = fmap[0]

@@ -18,7 +18,7 @@ class L2Norm(nn.Module):
     def reset_parameters(self):
         init.constant_(self.weight, self.gamma)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         norm = x.pow(2).sum(dim=1, keepdim=True).sqrt() + self.eps
         x = torch.div(x, norm)
         out = self.weight.unsqueeze(0).unsqueeze(2).unsqueeze(3).expand_as(x) * x
@@ -108,7 +108,7 @@ class S3FDNet(nn.Module):
         self.softmax = nn.Softmax(dim=-1)
         self.detect = Detect()
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         size = x.size()[2:]
         sources = list()
         loc = list()

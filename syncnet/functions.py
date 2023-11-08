@@ -1,25 +1,38 @@
 import glob
+import logging
 import os
-import pdb
 import pickle
 import subprocess
 import time
+from typing import List, Tuple, Dict
 
 import cv2
 import numpy as np
+from scenedetect import FrameTimecode
 from scenedetect.detectors import ContentDetector
 from scenedetect.scene_manager import SceneManager
 from scenedetect.stats_manager import StatsManager
 from scenedetect.video_manager import VideoManager
 from scipy import signal
 from scipy.interpolate import interp1d
-from scipy.io import wavfile
 
 from syncnet.config import Config
 from syncnet.s3fd.s3fd import S3FD
 
+log = logging.getLogger(__name__)
 
-def bb_intersection_over_union(boxA, boxB):
+
+def call_ffmpeg(command: List[str], debug=False):
+    log.debug(f"FFMpeg command: {' '.join(command)}")
+    if not debug:
+        return_code = subprocess.call(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    else:
+        return_code = subprocess.call(command)
+    if return_code != 0:
+        raise RuntimeError(f"ffmpeg returned status {return_code}")
+
+
+def bb_intersection_over_union(boxA: np.array, boxB: np.array) -> float:
     xA = max(boxA[0], boxB[0])
     yA = max(boxA[1], boxB[1])
     xB = min(boxA[2], boxB[2])
@@ -33,7 +46,7 @@ def bb_intersection_over_union(boxA, boxB):
     return iou
 
 
-def track_shot(opt: Config, scenefaces):
+def track_shot(opt: Config, scenefaces: np.array) -> List[Dict]:
     """
     face tracking
     """
@@ -80,12 +93,12 @@ def track_shot(opt: Config, scenefaces):
     return tracks
 
 
-def crop_video(opt, track, cropfile):
-    flist = glob.glob(os.path.join(opt.frames_dir, opt.reference, "*.jpg"))
+def crop_video(opt: Config, track: Dict, cropfile: str) -> Dict:
+    flist = glob.glob(f"{opt.frames_dir}/{opt.reference}/*.jpg")
     flist.sort()
 
-    fourcc = cv2.VideoWriter_fourcc(*"XVID")
-    vOut = cv2.VideoWriter(cropfile + "t.avi", fourcc, opt.frame_rate, (224, 224))
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    vOut = cv2.VideoWriter(cropfile + "t.mov", fourcc, opt.frame_rate, (224, 224))
 
     dets = {"x": [], "y": [], "s": []}
 
@@ -113,44 +126,50 @@ def crop_video(opt, track, cropfile):
         face = frame[int(my - bs) : int(my + bs * (1 + 2 * cs)), int(mx - bs * (1 + cs)) : int(mx + bs * (1 + cs))]
         vOut.write(cv2.resize(face, (224, 224)))
 
-    audiotmp = os.path.join(opt.tmp_dir, opt.reference, "audio.wav")
+    audiotmp = f"{opt.tmp_dir}/{opt.reference}/audio.wav"
     audiostart = (track["frame"][0]) / opt.frame_rate
     audioend = (track["frame"][-1] + 1) / opt.frame_rate
 
     vOut.release()
 
     # ========== CROP AUDIO FILE ==========
-    command = "ffmpeg -hide_banner -y -i %s -ss %.3f -to %.3f %s" % (
-        os.path.join(opt.avi_dir, opt.reference, "audio.wav"),
-        audiostart,
-        audioend,
-        audiotmp,
-    )
-    output = subprocess.call(command, shell=True, stdout=None)
-    if output != 0:
-        pdb.set_trace()
+    # fmt: off
+    command = [
+        "ffmpeg", "-hide_banner", "-y",
+        "-i", f"{opt.avi_dir}/{opt.reference}/audio.wav",
+        "-ss", f"{audiostart}",
+        "-to", f"{audioend}",
+        audiotmp
+    ]
+    # fmt: on
+    call_ffmpeg(command)
 
-    sample_rate, audio = wavfile.read(audiotmp)
+    # sample_rate, audio = wavfile.read(audiotmp)
 
     # ========== COMBINE AUDIO AND VIDEO FILES ==========
-    command = "ffmpeg -hide_banner -y -i %st.avi -i %s -c:v copy -c:a copy %s.avi" % (cropfile, audiotmp, cropfile)
-    output = subprocess.call(command, shell=True, stdout=None)
-    if output != 0:
-        pdb.set_trace()
+    # fmt: off
+    command = [
+        "ffmpeg", "-hide_banner", "-y",
+        "-i", f"{cropfile}t.mov",
+        "-i", audiotmp,
+        "-c:v", "copy",
+        "-c:a", "copy",
+        f"{cropfile}.mov"
+    ]
+    # fmt: on
+    call_ffmpeg(command)
+    log.debug(f"Written {cropfile}")
+    os.remove(cropfile + "t.mov")
 
-    print("Written %s" % cropfile)
-
-    os.remove(cropfile + "t.avi")
-
-    print("Mean pos: x %.2f y %.2f s %.2f" % (np.mean(dets["x"]), np.mean(dets["y"]), np.mean(dets["s"])))
+    log.info(f"Mean pos: x {np.mean(dets['x']):.2f} y {np.mean(dets['y']):.2f} s {np.mean(dets['s']):.2f}")
 
     return {"track": track, "proc_track": dets}
 
 
-def face_detection(opt, device):
+def face_detection(opt: Config, device: str) -> List[np.array]:
     DET = S3FD(weights_path=opt.s3fd_weights_path, device=device)
 
-    flist = glob.glob(os.path.join(opt.frames_dir, opt.reference, "*.jpg"))
+    flist = glob.glob(f"{opt.frames_dir}/{opt.reference}/*.jpg")
     flist.sort()
 
     dets = []
@@ -166,20 +185,19 @@ def face_detection(opt, device):
 
         elapsed_time = time.time() - start_time
 
-        print(
-            "%s-%05d; %d dets; %.2f Hz"
-            % (os.path.join(opt.avi_dir, opt.reference, "video.avi"), fidx, len(dets[-1]), (1 / elapsed_time))
+        log.debug(
+            f"{opt.avi_dir}/{opt.reference}/video.mov-{fidx:05d}; {len(dets[-1])} dets; {1 / elapsed_time:.2f} Hz"
         )
 
-    savepath = os.path.join(opt.work_dir, opt.reference, "faces.pckl")
+    savepath = f"{opt.work_dir}/{opt.reference}/faces.pckl"
     with open(savepath, "wb") as fil:
         pickle.dump(dets, fil)
 
     return dets
 
 
-def scene_detection(opt):
-    video_manager = VideoManager([os.path.join(opt.avi_dir, opt.reference, "video.avi")])
+def scene_detection(opt: Config) -> List[Tuple[FrameTimecode, FrameTimecode]]:
+    video_manager = VideoManager([f"{opt.avi_dir}/{opt.reference}/video.mov"])
     base_timecode = video_manager.get_base_timecode()
     video_manager.set_downscale_factor()
     video_manager.start()
@@ -194,10 +212,10 @@ def scene_detection(opt):
     if len(scene_list) == 0:
         scene_list = [(video_manager.get_base_timecode(), video_manager.get_current_timecode())]
 
-    savepath = os.path.join(opt.work_dir, opt.reference, "scene.pckl")
+    savepath = f"{opt.work_dir}/{opt.reference}/scene.pckl"
     with open(savepath, "wb") as fil:
         pickle.dump(scene_list, fil)
 
-    print("%s - scenes detected %d" % (os.path.join(opt.avi_dir, opt.reference, "video.avi"), len(scene_list)))
+    log.info(f"{len(scene_list)} scenes detected")
 
     return scene_list

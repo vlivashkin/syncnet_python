@@ -1,19 +1,12 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
+import logging
+
 import torch
 import torch.nn as nn
 
-
-def save(model, filename):
-    with open(filename, "wb") as f:
-        torch.save(model, f)
-        print("%s saved." % filename)
-
-
-def load(filename):
-    net = torch.load(filename)
-    return net
+log = logging.getLogger(__name__)
 
 
 class S(nn.Module):
@@ -86,26 +79,17 @@ class S(nn.Module):
             nn.ReLU(inplace=True),
         )
 
-    def forward_aud(self, x):
+    def forward_aud(self, x: torch.Tensor) -> torch.Tensor:
         mid = self.netcnnaud(x)
         # N x ch x 24 x M
         mid = mid.view((mid.size()[0], -1))
         # N x (ch x 24)
         out = self.netfcaud(mid)
-
         return out
 
-    def forward_lip(self, x):
+    def forward_lip(self, x: torch.Tensor) -> torch.Tensor:
         mid = self.netcnnlip(x)
         mid = mid.view((mid.size()[0], -1))
         # N x (ch x 24)
         out = self.netfclip(mid)
-
-        return out
-
-    def forward_lipfeat(self, x):
-        mid = self.netcnnlip(x)
-        out = mid.view((mid.size()[0], -1))
-        # N x (ch x 24)
-
         return out
