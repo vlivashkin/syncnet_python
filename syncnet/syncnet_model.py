@@ -42,17 +42,11 @@ class S(nn.Module):
         )
 
         self.netfcaud = nn.Sequential(
-            nn.Linear(512, 512),
-            nn.BatchNorm1d(512),
-            nn.ReLU(),
-            nn.Linear(512, num_layers_in_fc_layers),
+            nn.Linear(512, 512), nn.BatchNorm1d(512), nn.ReLU(), nn.Linear(512, num_layers_in_fc_layers)
         )
 
         self.netfclip = nn.Sequential(
-            nn.Linear(512, 512),
-            nn.BatchNorm1d(512),
-            nn.ReLU(),
-            nn.Linear(512, num_layers_in_fc_layers),
+            nn.Linear(512, 512), nn.BatchNorm1d(512), nn.ReLU(), nn.Linear(512, num_layers_in_fc_layers)
         )
 
         self.netcnnlip = nn.Sequential(
