@@ -47,3 +47,8 @@ utils/
 .idea
 temp
 weights
+
+.ipynb_checkpoints
+*.ipynb
+*.mp4
+*.mov
