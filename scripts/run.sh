@@ -13,4 +13,4 @@ fi
 python3 ./syncnet_metric.py \
     --video_path "$VIDEO_PATH" \
     --output_path "$VIDEO_PATH.json" \
-    --device cpu
+    --device cuda:0

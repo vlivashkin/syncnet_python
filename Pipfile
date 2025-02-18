@@ -3,14 +3,19 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 name = "pypi"
 
+[[source]]
+url = "https://download.pytorch.org/whl/cu124"
+verify_ssl = true
+name = "downloadpytorch"
+
 [packages]
 numpy = ">=1.18.1"
 opencv-contrib-python = "*"
 python-speech-features = "*"
 scenedetect = ">=0.6.1"
 scipy = ">=1.2.1"
-torch = ">=1.4.0"
-torchvision = ">=0.5.0"
+torch = { version = ">=1.4.0", index = "downloadpytorch" }
+torchvision = { version = ">=0.5.0", index = "downloadpytorch" }
 
 [dev-packages]
 black = {extras = ["jupyter"], version = "*"}
@@ -19,4 +24,4 @@ isort = "*"
 pipfile-sort = "*"
 
 [requires]
-python_version = "3.13"
+python_version = "3.10"

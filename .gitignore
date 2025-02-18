@@ -52,3 +52,6 @@ weights
 *.ipynb
 *.mp4
 *.mov
+
+scripts/run_*
+tmp_*
