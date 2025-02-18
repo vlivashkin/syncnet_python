@@ -1,146 +1,83 @@
-#!/usr/bin/python
 import argparse
-import glob
+import json
 import logging
-import os
-import pickle
 import shutil
-from typing import Tuple, List
+from typing import List
 
-import numpy as np
-
-from syncnet.config import Config
-from syncnet.functions import face_detection, scene_detection, track_shot, crop_video, call_ffmpeg
-from syncnet.syncnet_instance import SyncNetInstance
+from syncnet.config import SyncNetConfig
+from syncnet.ffmpeg import change_fps, extract_all_audio, extract_all_frames
+from syncnet.functions import crop_video, face_detection, scene_detection, track_scene
+from syncnet.instance import SyncNetInstance
+from syncnet.s3fd.s3fd import S3FD
 
 log = logging.getLogger(__name__)
 
 
 class SyncNetMetric:
-    def __init__(
-        self,
-        video_path: str,
-        name: str = None,
-        temp_dir="./temp",
-        s3fd_weights_path="./weights/sfd_face.pth",
-        syncnet_weights_path="./weights/syncnet_v2.model",
-        device="cuda:0",
-    ):
-        if name is None:
-            name = video_path.rsplit("/", 1)[1].rsplit(".", 1)[0]
-        self.opt = Config(
-            video_path=video_path,
-            name=name,
-            temp_dir=temp_dir,
-            s3fd_weights_path=s3fd_weights_path,
-            syncnet_weights_path=syncnet_weights_path,
-        )
-        self.device = device
+    def __init__(self, opt: SyncNetConfig):
+        self.opt = opt
 
-    def _preprocessing_pipeline(self):
-        # ========== CONVERT VIDEO AND EXTRACT FRAMES ==========
-        # fmt: off
-        command = [
-            "ffmpeg", "-hide_banner", "-y",
-            "-i", self.opt.videofile,
-            "-crf", "17",
-            "-async", "1",
-            "-r", f"{self.opt.frame_rate}",
-            f"{self.opt.avi_dir}/{self.opt.reference}/video.mov",
-        ]
-        # fmt: on
-        call_ffmpeg(command)
+        self.s3fd = S3FD(weights_path=self.opt.s3fd_weights_path, device=self.opt.device)
 
-        # fmt: off
-        command = [
-            "ffmpeg", "-hide_banner", "-y",
-            "-i", f"{self.opt.avi_dir}/{self.opt.reference}/video.mov",
-            "-qscale:v", "2",
-            "-threads", "1",
-            "-f", "image2",
-            f"{self.opt.frames_dir}/{self.opt.reference}/%06d.jpg",
-        ]
-        # fmt: on
-        call_ffmpeg(command)
+        self.syncnet = SyncNetInstance(device=self.opt.device)
+        self.syncnet.load_parameters(self.opt.syncnet_weights_path)
 
-        # fmt: off
-        command = [
-            "ffmpeg", "-hide_banner", "-y",
-            "-i", f"{self.opt.avi_dir}/{self.opt.reference}/video.mov",
-            "-ac", "1",
-            "-vn",
-            "-acodec", "pcm_s16le",
-            "-ar", f"{self.opt.audio_sample_rate}",
-            f"{self.opt.avi_dir}/{self.opt.reference}/audio.wav"
-        ]
-        # fmt: on
-        call_ffmpeg(command)
+    def run(self, source_video_path, cleanup=True) -> List:
+        video_path = f"{self.opt.data_dir}/resampled_video.mov"
+        audio_path = f"{self.opt.data_dir}/resampled_audio.wav"
+        change_fps(source_video_path, self.opt.frame_rate, video_path)
+        extract_all_frames(video_path, f"{self.opt.frames_dir}/%06d.jpg")
+        extract_all_audio(video_path, self.opt.audio_sample_rate, audio_path)
 
-        # ========== FACE DETECTION ==========
-        faces = face_detection(self.opt, self.device)
+        faces = face_detection(self.opt.frames_dir, self.s3fd, self.opt)
+        scenes = scene_detection(video_path)
 
-        # ========== SCENE DETECTION ==========
-        scene = scene_detection(self.opt)
+        all_tracks = []
+        for scene in scenes:
+            if scene[1].frame_num - scene[0].frame_num >= self.opt.min_track:
+                scene_tracks = track_scene(faces[scene[0].frame_num : scene[1].frame_num], self.opt)
+                if len(scene_tracks) > 1:  # TODO: make a parameter for it
+                    continue  # >1 tracks in scene means there are more than one person => let's skip it
+                all_tracks.extend(scene_tracks)
 
-        # ========== FACE TRACKING ==========
-        alltracks = []
-        for shot in scene:
-            if shot[1].frame_num - shot[0].frame_num >= self.opt.min_track:
-                alltracks.extend(track_shot(self.opt, faces[shot[0].frame_num : shot[1].frame_num]))
+        tracks_scores = []
+        for idx, track in enumerate(all_tracks):
+            cropped_video_path = f"{self.opt.crop_dir}/{idx:05d}.mov"
+            crop_video(track, self.opt.frames_dir, audio_path, cropped_video_path, self.opt)
+            offset, minval, conf = self.syncnet.evaluate(cropped_video_path, self.opt)
+            tracks_scores.append(
+                {
+                    "timecodes": (track["frame"][0] / self.opt.frame_rate, track["frame"][-1] / self.opt.frame_rate),
+                    "syncnet": {"offset": offset, "lse-d": minval, "lse-c": conf},
+                }
+            )
 
-        # ========== FACE TRACK CROP ==========
-        vidtracks = []
-        for ii, track in enumerate(alltracks):
-            vidtracks.append(crop_video(self.opt, track, f"{self.opt.crop_dir}/{self.opt.reference}/{ii:05d}"))
+        if cleanup:
+            shutil.rmtree(self.opt.data_dir)
 
-        # ========== SAVE RESULTS ==========
-        savepath = f"{self.opt.work_dir}/{self.opt.reference}/tracks.pckl"
-        with open(savepath, "wb") as fil:
-            pickle.dump(vidtracks, fil)
-
-        shutil.rmtree(f"{self.opt.tmp_dir}/{self.opt.reference}")
-
-    def _inference(self) -> Tuple[List[np.array], List[np.array], List[np.array], List[np.array]]:
-        # ==================== LOAD MODEL AND FILE LIST ====================
-        s = SyncNetInstance(device=self.device)
-        s.load_parameters(self.opt.syncnet_weights_path)
-        log.debug(f"Model {self.opt.syncnet_weights_path} loaded.")
-
-        flist = glob.glob(os.path.join(self.opt.crop_dir, self.opt.reference, "0*.mov"))
-        flist.sort()
-
-        # ==================== GET OFFSETS ====================
-        offsets, minvals, confs, dists = [], [], [], []
-        for idx, fname in enumerate(flist):
-            offset, minval, conf, dist = s.evaluate(self.opt, video_path=fname)
-            offsets.append(offset)
-            minvals.append(minval)
-            confs.append(conf)
-            dists.append(dist)
-
-        # ==================== PRINT RESULTS TO FILE ====================
-        with open(f"{self.opt.work_dir}/{self.opt.reference}/activesd.pckl", "wb") as fil:
-            pickle.dump(dists, fil)
-
-        return offsets, minvals, confs, dists
-
-    def run(self) -> Tuple[List[np.array], List[np.array], List[np.array], List[np.array]]:
-        self._preprocessing_pipeline()
-        offsets, minvals, confs, dists = self._inference()
-        return offsets, minvals, confs, dists
-
-    def cleanup(self):
-        shutil.rmtree(self.opt.data_dir)
+        return tracks_scores
 
 
 if __name__ == "__main__":
+    logging.basicConfig(format="%(asctime)s - %(name)s:%(lineno)d - %(levelname)s - %(message)s", level=logging.DEBUG)
+
     parser = argparse.ArgumentParser(description="SyncNet Metric")
     parser.add_argument("--video_path", type=str, required=True, help="")
-    parser.add_argument("--name", type=str, help="")
-    parser.add_argument("--data_dir", type=str, default="./temp", help="")
+    parser.add_argument("--temp_dir", type=str, default="./temp", help="")
+    parser.add_argument("--output_path", type=str, help="")
     parser.add_argument("--device", type=str, default="cuda:0", help="")
     args = parser.parse_args()
 
-    metric = SyncNetMetric(video_path=args.video_path, name=args.name, temp_dir=args.data_dir, device=args.device)
-    offsets, minvals, confs, _ = metric.run()
-    print(f"AV offset: {offsets}, LSE-D: {minvals}, LSE-C: {confs}")
+    log.debug("Args:\n" + "\n".join(f"{k}: {v}" for k, v in args.__dict__.items()))
+
+    opt = SyncNetConfig(data_dir=args.temp_dir, device=args.device)
+    metric = SyncNetMetric(opt=opt)
+    tracks_scores = metric.run(args.video_path)
+    for track in tracks_scores:
+        start, end = track["timecodes"]
+        offset, lsed, lsec = track["syncnet"]["offset"], track["syncnet"]["lse-d"], track["syncnet"]["lse-c"]
+        log.info(f"Scene [{start:.2f}:{end:.2f}] – AV offset: {offset}, LSE-D: {lsed:.3f}, LSE-C: {lsec:.3f}")
+
+    if args.output_path is not None:
+        with open(args.output_path, "w") as f:
+            json.dump(tracks_scores, f, indent=4)

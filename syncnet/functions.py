@@ -1,10 +1,7 @@
 import glob
 import logging
 import os
-import pickle
-import subprocess
-import time
-from typing import List, Tuple, Dict
+from typing import Dict, List, Tuple
 
 import cv2
 import numpy as np
@@ -15,21 +12,13 @@ from scenedetect.stats_manager import StatsManager
 from scenedetect.video_manager import VideoManager
 from scipy import signal
 from scipy.interpolate import interp1d
+from tqdm.auto import tqdm
 
-from syncnet.config import Config
+from syncnet.config import SyncNetConfig
+from syncnet.ffmpeg import combine_video_and_audio, crop_audio
 from syncnet.s3fd.s3fd import S3FD
 
 log = logging.getLogger(__name__)
-
-
-def call_ffmpeg(command: List[str], debug=False):
-    log.debug(f"FFMpeg command: {' '.join(command)}")
-    if not debug:
-        return_code = subprocess.call(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    else:
-        return_code = subprocess.call(command)
-    if return_code != 0:
-        raise RuntimeError(f"ffmpeg returned status {return_code}")
 
 
 def bb_intersection_over_union(boxA: np.array, boxB: np.array) -> float:
@@ -46,11 +35,7 @@ def bb_intersection_over_union(boxA: np.array, boxB: np.array) -> float:
     return iou
 
 
-def track_shot(opt: Config, scenefaces: np.array) -> List[Dict]:
-    """
-    face tracking
-    """
-
+def track_scene(scenefaces: np.array, opt: SyncNetConfig) -> List[Dict]:
     iouThres = 0.5  # Minimum IOU between consecutive face detections
     tracks = []
 
@@ -93,28 +78,25 @@ def track_shot(opt: Config, scenefaces: np.array) -> List[Dict]:
     return tracks
 
 
-def crop_video(opt: Config, track: Dict, cropfile: str) -> Dict:
-    flist = glob.glob(f"{opt.frames_dir}/{opt.reference}/*.jpg")
-    flist.sort()
-
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    vOut = cv2.VideoWriter(cropfile + "t.mov", fourcc, opt.frame_rate, (224, 224))
+def crop_video(track: Dict, images_path: str, audio_path: str, cropped_video_path: str, opt: SyncNetConfig) -> Dict:
+    tmp_video_path, tmp_audio_path = f"{opt.tmp_dir}/temp_video.mov", f"{opt.tmp_dir}/temp_audio.wav"
+    cs = opt.crop_scale
 
     dets = {"x": [], "y": [], "s": []}
-
     for det in track["bbox"]:
         dets["s"].append(max((det[3] - det[1]), (det[2] - det[0])) / 2)
         dets["y"].append((det[1] + det[3]) / 2)  # crop center x
         dets["x"].append((det[0] + det[2]) / 2)  # crop center y
-
-    # Smooth detections
     dets["s"] = signal.medfilt(dets["s"], kernel_size=13)
     dets["x"] = signal.medfilt(dets["x"], kernel_size=13)
     dets["y"] = signal.medfilt(dets["y"], kernel_size=13)
 
-    for fidx, frame in enumerate(track["frame"]):
-        cs = opt.crop_scale
+    flist = glob.glob(f"{images_path}/*.jpg")
+    flist.sort()
 
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    vOut = cv2.VideoWriter(tmp_video_path, fourcc, opt.frame_rate, (224, 224))
+    for fidx, frame in enumerate(track["frame"]):
         bs = dets["s"][fidx]  # Detection box size
         bsi = int(bs * (1 + 2 * cs))  # Pad videos by this amount
 
@@ -125,79 +107,41 @@ def crop_video(opt: Config, track: Dict, cropfile: str) -> Dict:
 
         face = frame[int(my - bs) : int(my + bs * (1 + 2 * cs)), int(mx - bs * (1 + cs)) : int(mx + bs * (1 + cs))]
         vOut.write(cv2.resize(face, (224, 224)))
-
-    audiotmp = f"{opt.tmp_dir}/{opt.reference}/audio.wav"
-    audiostart = (track["frame"][0]) / opt.frame_rate
-    audioend = (track["frame"][-1] + 1) / opt.frame_rate
-
     vOut.release()
 
     # ========== CROP AUDIO FILE ==========
-    # fmt: off
-    command = [
-        "ffmpeg", "-hide_banner", "-y",
-        "-i", f"{opt.avi_dir}/{opt.reference}/audio.wav",
-        "-ss", f"{audiostart}",
-        "-to", f"{audioend}",
-        audiotmp
-    ]
-    # fmt: on
-    call_ffmpeg(command)
-
-    # sample_rate, audio = wavfile.read(audiotmp)
+    audiostart = (track["frame"][0]) / opt.frame_rate
+    audioend = (track["frame"][-1] + 1) / opt.frame_rate
+    crop_audio(audio_path, audiostart, audioend, tmp_audio_path)
 
     # ========== COMBINE AUDIO AND VIDEO FILES ==========
-    # fmt: off
-    command = [
-        "ffmpeg", "-hide_banner", "-y",
-        "-i", f"{cropfile}t.mov",
-        "-i", audiotmp,
-        "-c:v", "copy",
-        "-c:a", "copy",
-        f"{cropfile}.mov"
-    ]
-    # fmt: on
-    call_ffmpeg(command)
-    log.debug(f"Written {cropfile}")
-    os.remove(cropfile + "t.mov")
+    combine_video_and_audio(tmp_video_path, tmp_audio_path, cropped_video_path)
+    os.remove(tmp_video_path)
+    os.remove(tmp_audio_path)
 
+    log.debug(f"Written {cropped_video_path}")
     log.info(f"Mean pos: x {np.mean(dets['x']):.2f} y {np.mean(dets['y']):.2f} s {np.mean(dets['s']):.2f}")
 
     return {"track": track, "proc_track": dets}
 
 
-def face_detection(opt: Config, device: str) -> List[np.array]:
-    DET = S3FD(weights_path=opt.s3fd_weights_path, device=device)
-
-    flist = glob.glob(f"{opt.frames_dir}/{opt.reference}/*.jpg")
+def face_detection(img_folder: str, s3fd: S3FD, opt: SyncNetConfig) -> List[np.array]:
+    flist = glob.glob(f"{img_folder}/*.jpg")
     flist.sort()
 
     dets = []
-    for fidx, fname in enumerate(flist):
-        start_time = time.time()
-
+    for idx, fname in tqdm(enumerate(flist), total=len(flist), desc="Face detection"):
         image = cv2.imread(fname)
         image_np = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        bboxes = DET.detect_faces(image_np, conf_th=0.9, scales=[opt.facedet_scale])
-        dets.append([])
-        for bbox in bboxes:
-            dets[-1].append({"frame": fidx, "bbox": (bbox[:-1]).tolist(), "conf": bbox[-1]})
-
-        elapsed_time = time.time() - start_time
-
-        log.debug(
-            f"{opt.avi_dir}/{opt.reference}/video.mov-{fidx:05d}; {len(dets[-1])} dets; {1 / elapsed_time:.2f} Hz"
-        )
-
-    savepath = f"{opt.work_dir}/{opt.reference}/faces.pckl"
-    with open(savepath, "wb") as fil:
-        pickle.dump(dets, fil)
+        bboxes = s3fd.detect_faces(image_np, conf_th=0.9, scales=[opt.facedet_scale])
+        frame_dets = [{"frame": idx, "bbox": (bbox[:-1]).tolist(), "conf": bbox[-1]} for bbox in bboxes]
+        dets.append(frame_dets)
 
     return dets
 
 
-def scene_detection(opt: Config) -> List[Tuple[FrameTimecode, FrameTimecode]]:
-    video_manager = VideoManager([f"{opt.avi_dir}/{opt.reference}/video.mov"])
+def scene_detection(video_path) -> List[Tuple[FrameTimecode, FrameTimecode]]:
+    video_manager = VideoManager([video_path])
     base_timecode = video_manager.get_base_timecode()
     video_manager.set_downscale_factor()
     video_manager.start()
@@ -211,11 +155,5 @@ def scene_detection(opt: Config) -> List[Tuple[FrameTimecode, FrameTimecode]]:
     scene_list = scene_manager.get_scene_list(base_timecode)
     if len(scene_list) == 0:
         scene_list = [(video_manager.get_base_timecode(), video_manager.get_current_timecode())]
-
-    savepath = f"{opt.work_dir}/{opt.reference}/scene.pckl"
-    with open(savepath, "wb") as fil:
-        pickle.dump(scene_list, fil)
-
-    log.info(f"{len(scene_list)} scenes detected")
 
     return scene_list

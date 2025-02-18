@@ -1,5 +1,4 @@
 import logging
-import time
 
 import cv2
 import numpy as np
@@ -15,15 +14,12 @@ IMG_MEAN = np.array([104.0, 117.0, 123.0])[:, np.newaxis, np.newaxis].astype("fl
 
 class S3FD:
     def __init__(self, weights_path="./weights/sfd_face.pth", device="cpu"):
-        tstamp = time.time()
         self.device = device
 
-        log.debug(f"[S3FD] loading with {self.device}")
         self.net = S3FDNet(device=self.device).to(self.device)
         state_dict = torch.load(weights_path, map_location=self.device)
         self.net.load_state_dict(state_dict)
         self.net.eval()
-        log.debug(f"[S3FD] finished loading ({time.time() - tstamp:.4f} sec)")
 
     def detect_faces(self, image: np.array, conf_th=0.8, scales=[1]) -> np.array:
         w, h = image.shape[1], image.shape[0]

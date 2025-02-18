@@ -1,6 +1,3 @@
-#!/usr/bin/python
-# -*- coding: utf-8 -*-
-
 import logging
 
 import torch
@@ -9,9 +6,9 @@ import torch.nn as nn
 log = logging.getLogger(__name__)
 
 
-class S(nn.Module):
+class SyncNet(nn.Module):
     def __init__(self, num_layers_in_fc_layers=1024):
-        super(S, self).__init__()
+        super(SyncNet, self).__init__()
 
         self.__nFeatures__ = 24
         self.__nChs__ = 32

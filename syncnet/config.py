@@ -2,12 +2,10 @@ import os
 from shutil import rmtree
 
 
-class Config:
+class SyncNetConfig:
     def __init__(
         self,
-        video_path,
-        name,
-        temp_dir="./temp",
+        data_dir,
         facedet_scale=0.25,
         crop_scale=0.40,
         min_track=50,
@@ -19,10 +17,8 @@ class Config:
         syncnet_weights_path="./weights/syncnet_v2.model",
         batch_size=20,
         vshift=15,
+        device="cpu",
     ):
-        self.data_dir = temp_dir
-        self.videofile = video_path
-        self.reference = name
         self.facedet_scale = facedet_scale
         self.crop_scale = crop_scale
         self.min_track = min_track
@@ -35,21 +31,15 @@ class Config:
         self.syncnet_weights_path = syncnet_weights_path
         self.batch_size = batch_size
         self.vshift = vshift
+        self.device = device
 
-        self.avi_dir = f"{self.data_dir}/pyavi"
-        self.tmp_dir = f"{self.data_dir}/pytmp"
-        self.work_dir = f"{self.data_dir}/pywork"
-        self.crop_dir = f"{self.data_dir}/pycrop"
-        self.frames_dir = f"{self.data_dir}/pyframes"
+        self.data_dir = data_dir
+        self.tmp_dir = f"{self.data_dir}/tmp"
+        self.crop_dir = f"{self.data_dir}/cropped_scenes"
+        self.frames_dir = f"{self.data_dir}/all_frames"
 
         # ========== DELETE EXISTING AND MAKE NEW DIRECTORIES ==========
-        for folder in [
-            f"{self.work_dir}/{self.reference}",
-            f"{self.crop_dir}/{self.reference}",
-            f"{self.avi_dir}/{self.reference}",
-            f"{self.frames_dir}/{self.reference}",
-            f"{self.tmp_dir}/{self.reference}",
-        ]:
+        for folder in [self.tmp_dir, self.crop_dir, self.frames_dir]:
             if os.path.exists(folder):
                 rmtree(folder)
             os.makedirs(folder)
