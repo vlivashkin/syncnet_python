@@ -13,6 +13,7 @@ class SyncNetConfig:
         audio_sample_rate=16000,
         num_failed_det=25,
         min_face_size=100,
+        max_tracks_per_scene=None,
         s3fd_weights_path="./weights/sfd_face.pth",
         syncnet_weights_path="./weights/syncnet_v2.model",
         batch_size=20,
@@ -26,6 +27,7 @@ class SyncNetConfig:
         self.audio_sample_rate = audio_sample_rate
         self.num_failed_det = num_failed_det
         self.min_face_size = min_face_size
+        self.max_tracks_per_scene = max_tracks_per_scene
 
         self.s3fd_weights_path = s3fd_weights_path
         self.syncnet_weights_path = syncnet_weights_path

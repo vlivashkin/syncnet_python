@@ -36,8 +36,8 @@ class SyncNetMetric:
         for scene in scenes:
             if scene[1].frame_num - scene[0].frame_num >= self.opt.min_track:
                 scene_tracks = track_scene(faces[scene[0].frame_num : scene[1].frame_num], self.opt)
-                if len(scene_tracks) > 1:  # TODO: make a parameter for it
-                    continue  # >1 tracks in scene means there are more than one person => let's skip it
+                if self.opt.max_tracks_per_scene is not None and len(scene_tracks) > self.opt.max_tracks_per_scene:
+                    continue  # Too many tracks in scene — skip ambiguous multi-person scenes
                 all_tracks.extend(scene_tracks)
 
         tracks_scores = []
