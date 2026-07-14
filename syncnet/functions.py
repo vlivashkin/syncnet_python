@@ -87,9 +87,14 @@ def crop_video(track: Dict, images_path: str, audio_path: str, cropped_video_pat
         dets["s"].append(max((det[3] - det[1]), (det[2] - det[0])) / 2)
         dets["y"].append((det[1] + det[3]) / 2)  # crop center x
         dets["x"].append((det[0] + det[2]) / 2)  # crop center y
-    dets["s"] = signal.medfilt(dets["s"], kernel_size=13)
-    dets["x"] = signal.medfilt(dets["x"], kernel_size=13)
-    dets["y"] = signal.medfilt(dets["y"], kernel_size=13)
+    # medfilt zero-pads the edges: for tracks shorter than the kernel the median collapses to 0
+    # -> bs=0 -> empty crop slice -> cv2.resize asserts (and the whole run() dies, killing valid
+    # tracks too). Clamp the kernel to the track length (odd, >=1).
+    k = min(13, len(dets["s"]) if len(dets["s"]) % 2 == 1 else len(dets["s"]) - 1)
+    k = max(k, 1)
+    dets["s"] = signal.medfilt(dets["s"], kernel_size=k)
+    dets["x"] = signal.medfilt(dets["x"], kernel_size=k)
+    dets["y"] = signal.medfilt(dets["y"], kernel_size=k)
 
     flist = glob.glob(f"{images_path}/*.jpg")
     flist.sort()

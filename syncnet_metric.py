@@ -30,7 +30,13 @@ class SyncNetMetric:
         extract_all_audio(video_path, self.opt.audio_sample_rate, audio_path)
 
         faces = face_detection(self.opt.frames_dir, self.s3fd, self.opt)
-        scenes = scene_detection(video_path)
+        if self.opt.scene_detection:
+            scenes = scene_detection(video_path)
+        else:
+            # Single-shot clip: one scene spanning all frames, no scenedetect pass.
+            from types import SimpleNamespace
+
+            scenes = [(SimpleNamespace(frame_num=0), SimpleNamespace(frame_num=len(faces)))]
 
         all_tracks = []
         for scene in scenes:
@@ -40,8 +46,21 @@ class SyncNetMetric:
                     continue  # Too many tracks in scene — skip ambiguous multi-person scenes
                 all_tracks.extend(scene_tracks)
 
+        if self.opt.single_track and len(all_tracks) > 1:
+            # Keep only the dominant track: coverage (frames) x median face size — the subject,
+            # not spurious micro-detections (background faces, figurines, posters).
+            def _track_score(t):
+                sizes = sorted(max(b[2] - b[0], b[3] - b[1]) for b in t["bbox"])
+                return len(t["frame"]) * float(sizes[len(sizes) // 2])
+
+            all_tracks = [max(all_tracks, key=_track_score)]
+
         tracks_scores = []
         for idx, track in enumerate(all_tracks):
+            if len(track["frame"]) < 6:
+                # evaluate() windows 5 frames (lastframe = min_length - 5): shorter tracks yield
+                # zero windows and torch.cat crashes. Spurious micro-tracks carry no sync signal.
+                continue
             cropped_video_path = f"{self.opt.crop_dir}/{idx:05d}.mov"
             crop_video(track, self.opt.frames_dir, audio_path, cropped_video_path, self.opt)
             offset, minval, conf = self.syncnet.evaluate(cropped_video_path, self.opt)

@@ -19,6 +19,8 @@ class SyncNetConfig:
         batch_size=20,
         vshift=15,
         device="cpu",
+        scene_detection=True,
+        single_track=False,
     ):
         self.facedet_scale = facedet_scale
         self.crop_scale = crop_scale
@@ -34,6 +36,11 @@ class SyncNetConfig:
         self.batch_size = batch_size
         self.vshift = vshift
         self.device = device
+        # scene_detection=False: treat the whole clip as ONE scene (skip the scenedetect pass) —
+        # for single-shot validation clips. single_track=True: evaluate only the best track
+        # (coverage x median face size) instead of every track.
+        self.scene_detection = scene_detection
+        self.single_track = single_track
 
         self.data_dir = data_dir
         self.tmp_dir = f"{self.data_dir}/tmp"
