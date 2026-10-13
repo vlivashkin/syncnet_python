@@ -6,10 +6,6 @@ from typing import Dict, List, Tuple
 import cv2
 import numpy as np
 from scenedetect import FrameTimecode
-from scenedetect.detectors import ContentDetector
-from scenedetect.scene_manager import SceneManager
-from scenedetect.stats_manager import StatsManager
-from scenedetect.video_manager import VideoManager
 from scipy import signal
 from scipy.interpolate import interp1d
 from tqdm.auto import tqdm
@@ -146,19 +142,20 @@ def face_detection(img_folder: str, s3fd: S3FD, opt: SyncNetConfig) -> List[np.a
 
 
 def scene_detection(video_path) -> List[Tuple[FrameTimecode, FrameTimecode]]:
-    video_manager = VideoManager([video_path])
-    base_timecode = video_manager.get_base_timecode()
-    video_manager.set_downscale_factor()
-    video_manager.start()
+    """Content-based scene cuts (PySceneDetect ContentDetector, default threshold) as (start, end) timecodes.
 
-    stats_manager = StatsManager()
-    scene_manager = SceneManager(stats_manager)
-    # Add ContentDetector algorithm (constructor takes detector options like threshold).
+    The 0.6+ API (open_video + SceneManager; the VideoManager / StatsManager pair of 0.5 was removed in 0.7). Imported
+    lazily so a caller that skips scene detection (SyncNetConfig.scene_detection=False) never needs the package at all.
+    """
+    from scenedetect import ContentDetector, SceneManager, open_video
+
+    video = open_video(video_path)
+    scene_manager = SceneManager()
     scene_manager.add_detector(ContentDetector())
-    scene_manager.detect_scenes(frame_source=video_manager)
+    scene_manager.detect_scenes(video)
 
-    scene_list = scene_manager.get_scene_list(base_timecode)
+    scene_list = scene_manager.get_scene_list()
     if len(scene_list) == 0:
-        scene_list = [(video_manager.get_base_timecode(), video_manager.get_current_timecode())]
+        scene_list = [(video.base_timecode, video.duration)]
 
     return scene_list
